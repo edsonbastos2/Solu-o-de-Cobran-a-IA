@@ -13,7 +13,6 @@ export default function CaseDetailPage() {
 
   const [caseData, setCaseData] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
-  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -62,53 +61,14 @@ export default function CaseDetailPage() {
     }
   }
 
-  const sendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || sending) return;
-
-    const userMessage = input.trim();
-    setInput('');
-    setSending(true);
-    setChatError(null);
-
-    // Optimistic UI for user message
-    const tempMsg = { id: Date.now(), role: 'user', content: userMessage, created_at: new Date().toISOString() };
-    setMessages(prev => [...prev, tempMsg]);
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caseId, message: userMessage })
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Falha ao enviar mensagem');
-      }
-      
-      // The real-time subscription will fetch the updated case status and AI response,
-      // but we can manually trigger a fetch just in case it's slow
-      await fetchData();
-    } catch (err: any) {
-      console.error(err);
-      setChatError(err.message);
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
-    } finally {
-      setSending(false);
-    }
-  };
-
   const startConversation = async () => {
     setSending(true);
     setChatError(null);
     try {
-      // Simulate system trigger
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/start-negotiation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caseId, message: "Olá! Gostaria de iniciar a negociação. Quem sou eu e qual o valor da dívida?" }) // Prompting the AI to start
+        body: JSON.stringify({ caseId })
       });
       if (!res.ok) {
         const data = await res.json();
@@ -164,16 +124,24 @@ export default function CaseDetailPage() {
 
       <main className="flex-1 overflow-hidden max-w-5xl w-full mx-auto flex p-6 gap-6">
         
-        {/* Chat Simulator */}
+        {/* Chat History */}
         <div className="flex-1 bg-[#16181d] border border-white/5 rounded-xl shadow-sm flex flex-col overflow-hidden">
           <div className="bg-[#111318] border-b border-white/5 p-4 text-white flex justify-between items-center">
             <div className="flex items-center font-semibold text-sm">
               <div className="w-8 h-8 bg-emerald-500/10 rounded mr-3 flex items-center justify-center">
                 <Bot className="w-5 h-5 text-emerald-400" />
               </div>
-              Simulador de WhatsApp
+              Histórico do WhatsApp
             </div>
-            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold bg-white/5 px-2 py-1 rounded">Visão do Devedor</div>
+            {caseData.status === 'not_started' && (
+              <button 
+                onClick={startConversation}
+                disabled={sending}
+                className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-xs font-semibold hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
+              >
+                {sending ? 'Iniciando...' : 'Iniciar Abordagem da IA'}
+              </button>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#0e1014]">
@@ -181,12 +149,15 @@ export default function CaseDetailPage() {
               <div className="flex flex-col items-center justify-center h-full text-slate-400 p-6 text-center">
                 <Bot className="w-12 h-12 mb-4 opacity-20" />
                 <p className="mb-6 text-sm">Nenhuma mensagem ainda.</p>
-                <button 
-                  onClick={startConversation}
-                  className="px-4 py-2 bg-white/10 text-white rounded-md text-sm hover:bg-white/20 transition-colors"
-                >
-                  Iniciar Abordagem da IA
-                </button>
+                {caseData.status === 'not_started' && (
+                  <button 
+                    onClick={startConversation}
+                    disabled={sending}
+                    className="px-4 py-2 bg-emerald-500 text-black font-semibold rounded-md text-sm hover:bg-emerald-400 transition-colors disabled:opacity-50"
+                  >
+                    Iniciar Abordagem da IA
+                  </button>
+                )}
               </div>
             ) : (
               messages.map((msg, i) => (
@@ -197,6 +168,7 @@ export default function CaseDetailPage() {
                       : 'bg-[#16181d] text-slate-300 border border-white/5 rounded-tl-none shadow-sm'
                   }`}>
                     {msg.role === 'ai' && <div className="text-[10px] uppercase tracking-wider text-emerald-500 font-bold mb-1">IA Cobrança</div>}
+                    {msg.role === 'user' && <div className="text-[10px] uppercase tracking-wider text-black/60 font-bold mb-1">Devedor</div>}
                     <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
                     <div className={`text-[10px] mt-1 text-right font-mono ${msg.role === 'user' ? 'text-black/60' : 'text-slate-600'}`}>
                       {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -213,24 +185,6 @@ export default function CaseDetailPage() {
             )}
             <div ref={messagesEndRef} />
           </div>
-
-          <form onSubmit={sendMessage} className="p-3 bg-[#111318] border-t border-white/5 flex gap-2">
-            <input 
-              type="text" 
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              placeholder="Digite como se fosse o devedor..."
-              className="flex-1 rounded-full border border-white/10 bg-[#0e1014] text-white px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 placeholder-slate-600"
-              disabled={sending || caseData.status === 'closed'}
-            />
-            <button 
-              type="submit" 
-              disabled={sending || !input.trim() || caseData.status === 'closed'}
-              className="bg-emerald-500 text-black p-2.5 rounded-full hover:bg-emerald-400 disabled:opacity-50 transition-colors flex items-center justify-center"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
         </div>
 
         {/* Lawyer Details Panel */}
