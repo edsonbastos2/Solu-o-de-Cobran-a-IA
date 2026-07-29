@@ -77,17 +77,17 @@ export default function KanbanBoard() {
   };
 
   return (
-    <div className="p-8 h-[calc(100vh-4rem)] flex flex-col">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-4 sm:p-6 md:p-8 min-h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)] flex flex-col">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Casos de Cobrança</h1>
-          <p className="text-slate-500 text-sm mt-1">Acompanhe as negociações da IA em tempo real</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Casos de Cobrança</h1>
+          <p className="text-slate-500 text-xs sm:text-sm mt-0.5 sm:mt-1">Acompanhe as negociações da IA em tempo real</p>
         </div>
         <Link 
           href="/cases/new" 
-          className="inline-flex items-center px-4 py-1.5 bg-white text-black text-sm font-semibold rounded-md hover:bg-slate-200 transition-colors"
+          className="inline-flex items-center justify-center px-4 py-2 sm:py-1.5 bg-white text-black text-xs sm:text-sm font-semibold rounded-lg sm:rounded-md hover:bg-slate-200 transition-colors w-full sm:w-auto shrink-0 shadow-sm"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="w-4 h-4 mr-2 shrink-0" />
           Novo Caso
         </Link>
       </div>
@@ -99,24 +99,24 @@ export default function KanbanBoard() {
       )}
 
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center min-h-[300px]">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto">
-          <div className="flex gap-6 min-w-max h-full pb-4">
+        <div className="flex-1 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="flex gap-4 sm:gap-6 min-w-max h-full pb-4 snap-x snap-mandatory">
             {columns.map(col => {
               const colCases = cases.filter(c => c.status === col.id);
               const Icon = col.icon;
               
               return (
-                <div key={col.id} className="w-80 flex flex-col max-h-full bg-[#16181d] rounded-xl border border-white/5 overflow-hidden">
-                  <div className="p-4 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+                <div key={col.id} className="w-[85vw] max-w-[320px] sm:w-80 shrink-0 flex flex-col max-h-[75vh] lg:max-h-full bg-[#16181d] rounded-xl border border-white/5 overflow-hidden snap-center">
+                  <div className="p-3.5 sm:p-4 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <div className={`p-1.5 rounded-md ${col.bg}`}>
                         <Icon className={`w-4 h-4 ${col.color}`} />
                       </div>
-                      <h3 className="font-semibold text-white text-sm">{col.title}</h3>
+                      <h3 className="font-semibold text-white text-xs sm:text-sm">{col.title}</h3>
                     </div>
                     <span className="bg-white/10 text-slate-300 text-xs font-medium px-2 py-0.5 rounded">
                       {colCases.length}
@@ -126,24 +126,24 @@ export default function KanbanBoard() {
                   <div className="flex-1 p-3 overflow-y-auto space-y-3">
                     {colCases.map(c => (
                       <Link key={c.id} href={`/cases/${c.id}`}>
-                        <div className="bg-[#0e1014] p-4 rounded-lg border border-white/5 hover:bg-white/[0.02] transition-colors cursor-pointer group">
+                        <div className="bg-[#0e1014] p-3.5 sm:p-4 rounded-lg border border-white/5 hover:bg-white/[0.02] transition-colors cursor-pointer group">
                           <div className="flex justify-between items-start mb-2">
-                            <h4 className="font-medium text-slate-200 group-hover:text-emerald-400 transition-colors">{c.name}</h4>
-                            <span className="text-[10px] text-slate-500 font-mono tracking-wider">#{c.id.substring(0,6)}</span>
+                            <h4 className="font-medium text-slate-200 group-hover:text-emerald-400 transition-colors text-sm sm:text-base leading-tight">{c.name}</h4>
+                            <span className="text-[10px] text-slate-500 font-mono tracking-wider shrink-0 ml-2">#{c.id.substring(0,6)}</span>
                           </div>
                           
                           <div className="flex items-center text-xs text-slate-400 mb-3 font-mono">
-                            <Phone className="w-3 h-3 mr-1.5 opacity-60" />
+                            <Phone className="w-3 h-3 mr-1.5 opacity-60 shrink-0" />
                             {c.phone}
                           </div>
                           
-                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/5">
+                          <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
                             <div>
-                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Valor Atualizado</p>
-                              <p className="font-bold text-slate-200 text-sm">{formatCurrency(c.updated_value)}</p>
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Valor Atualizado</p>
+                              <p className="font-bold text-slate-200 text-xs sm:text-sm">{formatCurrency(c.updated_value)}</p>
                             </div>
                             <div className="text-right">
-                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Margem</p>
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Margem</p>
                               <p className="text-xs font-mono text-emerald-400">{c.max_discount_margin}%</p>
                             </div>
                           </div>
@@ -151,7 +151,7 @@ export default function KanbanBoard() {
                       </Link>
                     ))}
                     {colCases.length === 0 && (
-                      <div className="text-center py-8 text-slate-500 text-sm border border-dashed border-white/10 rounded-lg">
+                      <div className="text-center py-8 text-slate-500 text-xs sm:text-sm border border-dashed border-white/10 rounded-lg">
                         Nenhum caso nesta etapa
                       </div>
                     )}

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       .replace('{min_acceptable}', minAcceptable.toFixed(2));
 
     const contents = historyData?.map((msg: any) => ({
-      role: msg.role === 'ai' ? 'model' : 'user',
+      role: (msg.role === 'ai' || msg.role === 'human') ? 'model' : 'user',
       parts: [{ text: msg.content }]
     })) || [];
     

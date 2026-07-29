@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const { data: cases, error: casesError } = await supabase
       .from('cases')
       .select('*')
-      .or(`status.eq.not_started,status.eq.in_negotiation`)
+      .or(`status.eq.not_started,status.eq.in_negotiation,status.eq.needs_attention`)
       .like('phone', `%${phoneToMatch}%`)
       .order('created_at', { ascending: false })
       .limit(1);
@@ -47,6 +47,17 @@ export async function POST(req: NextRequest) {
     }
 
     const currentCase = cases[0];
+
+    // If case is in human intervention mode (needs_attention), just record the message and do not invoke Gemini AI
+    if (currentCase.status === 'needs_attention') {
+      console.log(`Case ${currentCase.id} is in human intervention mode. Storing debtor message without invoking AI.`);
+      await supabase.from('messages').insert({
+        case_id: currentCase.id,
+        role: 'user',
+        content: text
+      });
+      return NextResponse.json({ ok: true });
+    }
 
     // Trigger the chat logic internally by calling our own API
     const appUrl = process.env.APP_URL || 'http://localhost:3000';
