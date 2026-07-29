@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Send, Bot, User, CheckCircle, AlertTriangle, UserCheck, Play, Pause } from 'lucide-react';
 
+import { Header } from '@/components/header';
+
 export default function CaseDetailPage() {
   const params = useParams();
   const caseId = params?.id as string;
@@ -155,6 +157,7 @@ export default function CaseDetailPage() {
 
   return (
     <div className="min-h-screen lg:h-screen bg-[#0c0d10] text-slate-300 flex flex-col overflow-x-hidden">
+      <Header />
       <header className="bg-[#111318] border-b border-white/5 px-4 sm:px-6 py-3 sm:py-4 shrink-0">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center">

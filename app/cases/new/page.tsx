@@ -7,6 +7,7 @@ import Papa from 'papaparse';
 import { ArrowLeft, Upload, Save, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { calculateUpdatedValue } from '@/lib/finance';
+import { Header } from '@/components/header';
 
 export default function NewCasePage() {
   const router = useRouter();
@@ -126,8 +127,9 @@ export default function NewCasePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0c0d10] py-4 sm:py-8 text-slate-300">
-      <div className="max-w-3xl mx-auto px-3 sm:px-4">
+    <div className="min-h-screen bg-[#0c0d10] text-slate-300">
+      <Header />
+      <div className="py-4 sm:py-8 max-w-3xl mx-auto px-3 sm:px-4">
         <Link href="/" className="inline-flex items-center text-xs sm:text-sm text-slate-500 hover:text-white mb-4 sm:mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4 mr-1 shrink-0" />
           Voltar para o Kanban

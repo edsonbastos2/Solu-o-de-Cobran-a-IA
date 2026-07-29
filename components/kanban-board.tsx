@@ -28,28 +28,6 @@ export default function KanbanBoard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchCases();
-
-    // Set up realtime subscription if supabase is configured
-    if (supabase) {
-      const channel = supabase
-        .channel('schema-db-changes')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'cases' },
-          (payload: any) => {
-            fetchCases();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, []);
-
   async function fetchCases() {
     if (!supabase) {
       setError("Supabase não configurado. Adicione as variáveis de ambiente.");
@@ -71,6 +49,28 @@ export default function KanbanBoard() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    fetchCases();
+
+    // Set up realtime subscription if supabase is configured
+    if (supabase) {
+      const channel = supabase
+        .channel('schema-db-changes')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'cases' },
+          (payload: any) => {
+            fetchCases();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, []);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
