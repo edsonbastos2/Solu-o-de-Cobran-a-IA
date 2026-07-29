@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { processChat } from '@/lib/agent';
 
 // Handle incoming messages from Z-API
 export async function POST(req: NextRequest) {
@@ -59,20 +60,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Trigger the chat logic internally by calling our own API
-    const appUrl = process.env.APP_URL || 'http://localhost:3000';
-    const chatRes = await fetch(`${appUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ caseId: currentCase.id, message: text })
-    });
-
-    if (!chatRes.ok) {
-      console.error("Internal chat API error:", await chatRes.text());
-      return NextResponse.json({ ok: true });
-    }
-
-    return NextResponse.json({ ok: true });
+    // Trigger the chat logic directly
+    const result = await processChat(currentCase.id, text);
+    
+    return NextResponse.json({ ok: true, newStatus: result.newStatus });
   } catch (error) {
     console.error('Z-API Webhook Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

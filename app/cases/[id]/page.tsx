@@ -8,7 +8,7 @@ import { ArrowLeft, Send, Bot, User, CheckCircle, AlertTriangle, UserCheck, Play
 
 export default function CaseDetailPage() {
   const params = useParams();
-  const caseId = params.id as string;
+  const caseId = params?.id as string;
   const router = useRouter();
 
   const [caseData, setCaseData] = useState<any>(null);
