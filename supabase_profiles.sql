@@ -12,12 +12,22 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   gemini_api_key TEXT,
   openai_api_key TEXT,
   anthropic_api_key TEXT,
+  openrouter_api_key TEXT,
   ollama_base_url TEXT DEFAULT 'http://localhost:11434',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 2. Habilita Row Level Security (RLS)
+-- 2. Garante que as colunas existam caso a tabela já tenha sido criada anteriormente
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ai_provider TEXT DEFAULT 'gemini';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ai_model TEXT DEFAULT 'gemini-3.5-flash';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS gemini_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS openai_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS anthropic_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS openrouter_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ollama_base_url TEXT DEFAULT 'http://localhost:11434';
+
+-- 3. Habilita Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- 3. Cria políticas de segurança

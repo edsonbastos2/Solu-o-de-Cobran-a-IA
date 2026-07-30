@@ -20,6 +20,7 @@ export default function SettingsPage() {
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [openrouterKey, setOpenrouterKey] = useState('');
   const [ollamaUrl, setOllamaUrl] = useState('');
   
   const [saving, setSaving] = useState(false);
@@ -45,6 +46,7 @@ export default function SettingsPage() {
           setGeminiKey(data.gemini_api_key || '');
           setOpenaiKey(data.openai_api_key || '');
           setAnthropicKey(data.anthropic_api_key || '');
+          setOpenrouterKey(data.openrouter_api_key || '');
           setOllamaUrl(data.ollama_base_url || 'http://localhost:11434');
         } else if (error && error.code !== 'PGRST116') {
           console.error('Error loading profile:', error);
@@ -78,6 +80,7 @@ export default function SettingsPage() {
           gemini_api_key: geminiKey,
           openai_api_key: openaiKey,
           anthropic_api_key: anthropicKey,
+          openrouter_api_key: openrouterKey,
           ollama_base_url: ollamaUrl,
           updated_at: new Date().toISOString(),
         });
@@ -253,17 +256,18 @@ export default function SettingsPage() {
                           <option value="gemini">Google Gemini</option>
                           <option value="openai">OpenAI (ChatGPT)</option>
                           <option value="anthropic">Anthropic (Claude)</option>
+                          <option value="openrouter">OpenRouter (OpenCode / Outros)</option>
                           <option value="ollama">Ollama (Modelos Locais)</option>
                         </select>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Modelo</label>
-                        {aiProvider === 'ollama' ? (
+                        {aiProvider === 'ollama' || aiProvider === 'openrouter' ? (
                           <input 
                             type="text"
                             value={aiModel}
                             onChange={(e) => setAiModel(e.target.value)}
-                            placeholder="Ex: llama3"
+                            placeholder={aiProvider === 'openrouter' ? "Ex: meta-llama/llama-3-8b-instruct:free" : "Ex: llama3"}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         ) : (
@@ -333,6 +337,19 @@ export default function SettingsPage() {
                             value={anthropicKey}
                             onChange={(e) => setAnthropicKey(e.target.value)}
                             placeholder="sk-ant-..."
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          />
+                        </div>
+                      )}
+
+                      {aiProvider === 'openrouter' && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenRouter API Key</label>
+                          <input 
+                            type="password"
+                            value={openrouterKey}
+                            onChange={(e) => setOpenrouterKey(e.target.value)}
+                            placeholder="sk-or-v1-..."
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         </div>

@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
       if (profile) {
         aiProvider = profile.ai_provider || 'gemini';
-        aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : 'claude-3-haiku');
+        aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : aiProvider === 'openrouter' ? 'meta-llama/llama-3-8b-instruct:free' : 'claude-3-haiku');
         
         if (aiProvider === 'gemini') {
           apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
@@ -65,6 +65,8 @@ export async function POST(req: NextRequest) {
           apiKey = profile.openai_api_key || process.env.OPENAI_API_KEY || '';
         } else if (aiProvider === 'anthropic') {
           apiKey = profile.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '';
+        } else if (aiProvider === 'openrouter') {
+          apiKey = profile.openrouter_api_key || process.env.OPENROUTER_API_KEY || '';
         } else if (aiProvider === 'ollama') {
           ollamaBaseUrl = profile.ollama_base_url || 'http://localhost:11434';
           apiKey = 'ollama-no-key';
@@ -122,10 +124,10 @@ export async function POST(req: NextRequest) {
         if (response.content[0].type === 'text') {
           aiText = response.content[0].text;
         }
-      } else if (aiProvider === 'ollama') {
+      } else if (aiProvider === 'ollama' || aiProvider === 'openrouter') {
         const openai = new OpenAI({ 
-          apiKey: 'ollama', 
-          baseURL: `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` 
+          apiKey: aiProvider === 'openrouter' ? apiKey : 'ollama', 
+          baseURL: aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` 
         });
         const response = await openai.chat.completions.create({
           model: aiModel,
