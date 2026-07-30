@@ -23,7 +23,7 @@ Desconto Máximo Autorizado: {max_discount_margin}% (ou seja, o mínimo aceitáv
 
 export async function processChat(caseId: string, message: string) {
   if (!supabase) {
-    throw new Error("Supabase not configured.");
+    throw new Error("Supabase não configurado.");
   }
 
   // 1. Fetch case details

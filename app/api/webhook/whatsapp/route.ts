@@ -66,6 +66,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, newStatus: result.newStatus });
   } catch (error) {
     console.error('Z-API Webhook Error:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro Interno do Servidor' }, { status: 500 });
   }
 }

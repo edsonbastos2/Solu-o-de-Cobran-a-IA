@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const { caseId } = await req.json();
 
     if (!supabase) {
-      return NextResponse.json({ error: "Supabase not configured." }, { status: 500 });
+      return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
     }
 
     const { data: caseData, error: caseError } = await supabase
