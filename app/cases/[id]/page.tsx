@@ -22,6 +22,7 @@ export default function CaseDetailPage() {
 
   const [caseData, setCaseData] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [agentInput, setAgentInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -55,9 +56,21 @@ export default function CaseDetailPage() {
         )
         .subscribe();
 
+      const logsChannel = supabase
+        .channel(`logs-${caseId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'audit_logs', filter: `case_id=eq.${caseId}` },
+          (payload: any) => {
+            fetchData();
+          }
+        )
+        .subscribe();
+
       return () => {
         supabase.removeChannel(channel);
         supabase.removeChannel(caseChannel);
+        supabase.removeChannel(logsChannel);
       };
     }
   }, [caseId]);
@@ -69,14 +82,16 @@ export default function CaseDetailPage() {
   async function fetchData() {
     if (!supabase) return;
     try {
-      const [caseRes, msgRes] = await Promise.all([
+      const [caseRes, msgRes, logsRes] = await Promise.all([
         supabase.from('cases').select('*').eq('id', caseId).single(),
-        supabase.from('messages').select('*').eq('case_id', caseId).order('created_at', { ascending: true })
+        supabase.from('messages').select('*').eq('case_id', caseId).order('created_at', { ascending: true }),
+        supabase.from('audit_logs').select('*').eq('case_id', caseId).order('created_at', { ascending: false })
       ]);
 
       if (caseRes.error) throw caseRes.error;
       setCaseData(caseRes.data);
       setMessages(msgRes.data || []);
+      setAuditLogs(logsRes.data || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -434,6 +449,32 @@ export default function CaseDetailPage() {
               </button>
             </div>
           )}
+
+          <div className="bg-[#16181d] border border-white/5 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col max-h-[300px]">
+            <h3 className="font-semibold text-white mb-3 flex items-center text-xs sm:text-sm shrink-0">
+              <AlertTriangle className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
+              Registro de Atividades
+            </h3>
+            <div className="overflow-y-auto space-y-3 pr-1 text-xs text-slate-400">
+              {auditLogs.length === 0 ? (
+                <p className="text-slate-500 text-center py-4">Nenhuma atividade registrada.</p>
+              ) : (
+                auditLogs.map((log) => (
+                  <div key={log.id} className="border-l-2 border-white/10 pl-3 py-1">
+                    <p className="font-semibold text-white mb-1">
+                      {log.action === 'CASE_CREATED' ? 'Caso Criado' :
+                       log.action === 'STATUS_CHANGE' ? 'Status Alterado' :
+                       log.action === 'HUMAN_INTERVENTION' ? 'Intervenção Humana' : log.action}
+                    </p>
+                    <p className="mb-1 leading-relaxed">{log.details}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">
+                      {new Date(log.created_at).toLocaleString('pt-BR')}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </main>
     </div>
