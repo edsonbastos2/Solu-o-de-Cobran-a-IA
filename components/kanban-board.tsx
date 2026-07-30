@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Plus, MessageCircleWarning, Phone, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Plus, MessageCircleWarning, Phone, AlertCircle, CheckCircle2, Clock, CalendarClock } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { differenceInDays, parseISO } from 'date-fns';
 
 type Case = {
   id: string;
@@ -186,20 +187,38 @@ export default function KanbanBoard() {
                   </div>
                   
                   <div className="flex-1 p-3 overflow-y-auto space-y-3">
-                    {colCases.map(c => (
-                      <Link key={c.id} href={`/cases/${c.id}`}>
-                        <div className="bg-[#0e1014] p-3.5 sm:p-4 rounded-lg border border-white/5 hover:bg-white/[0.02] transition-colors cursor-pointer group">
-                          <div className="flex justify-between items-start mb-2">
-                            <h4 className="font-medium text-slate-200 group-hover:text-emerald-400 transition-colors text-sm sm:text-base leading-tight">{c.name}</h4>
-                            <span className="text-[10px] text-slate-500 font-mono tracking-wider shrink-0 ml-2">#{c.id.substring(0,6)}</span>
-                          </div>
-                          
-                          <div className="flex items-center text-xs text-slate-400 mb-3 font-mono">
-                            <Phone className="w-3 h-3 mr-1.5 opacity-60 shrink-0" />
-                            {c.phone}
-                          </div>
-                          
-                          <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+                    {colCases.map(c => {
+                      let badge = null;
+                      if (c.due_date && c.status !== 'closed') {
+                        try {
+                          const daysUntilDue = differenceInDays(parseISO(c.due_date), new Date());
+                          if (daysUntilDue < 0) {
+                            badge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-red-400 border border-red-500/20"><CalendarClock className="w-3 h-3 mr-1" /> Vencido há {Math.abs(daysUntilDue)} {Math.abs(daysUntilDue) === 1 ? 'dia' : 'dias'}</span>;
+                          } else if (daysUntilDue === 0) {
+                            badge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20"><CalendarClock className="w-3 h-3 mr-1" /> Vence hoje</span>;
+                          } else if (daysUntilDue <= 3) {
+                            badge = <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20"><CalendarClock className="w-3 h-3 mr-1" /> Vence em {daysUntilDue} {daysUntilDue === 1 ? 'dia' : 'dias'}</span>;
+                          }
+                        } catch(e) {}
+                      }
+
+                      return (
+                        <Link key={c.id} href={`/cases/${c.id}`}>
+                          <div className="bg-[#0e1014] p-3.5 sm:p-4 rounded-lg border border-white/5 hover:bg-white/[0.02] transition-colors cursor-pointer group">
+                            <div className="flex justify-between items-start mb-2">
+                              <h4 className="font-medium text-slate-200 group-hover:text-emerald-400 transition-colors text-sm sm:text-base leading-tight">{c.name}</h4>
+                              <span className="text-[10px] text-slate-500 font-mono tracking-wider shrink-0 ml-2">#{c.id.substring(0,6)}</span>
+                            </div>
+                            
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center text-xs text-slate-400 font-mono">
+                                <Phone className="w-3 h-3 mr-1.5 opacity-60 shrink-0" />
+                                {c.phone}
+                              </div>
+                              {badge}
+                            </div>
+                            
+                            <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
                             <div>
                               <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Valor Atualizado</p>
                               <p className="font-bold text-slate-200 text-xs sm:text-sm">{formatCurrency(c.updated_value)}</p>
@@ -211,7 +230,8 @@ export default function KanbanBoard() {
                           </div>
                         </div>
                       </Link>
-                    ))}
+                    );
+                  })}
                     {colCases.length === 0 && (
                       <div className="text-center py-8 text-slate-500 text-xs sm:text-sm border border-dashed border-white/10 rounded-lg">
                         Nenhum caso nesta etapa
