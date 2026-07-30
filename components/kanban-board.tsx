@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Plus, MessageCircleWarning, Phone, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 type Case = {
   id: string;
@@ -17,10 +18,10 @@ type Case = {
 };
 
 const columns = [
-  { id: 'not_started', title: 'Não Iniciado', icon: Clock, color: 'text-slate-400', bg: 'bg-white/5' },
-  { id: 'in_negotiation', title: 'Em Negociação (IA)', icon: MessageCircleWarning, color: 'text-blue-400', bg: 'bg-blue-500/10' },
-  { id: 'needs_attention', title: 'Requer Atenção', icon: AlertCircle, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-  { id: 'closed', title: 'Acordo Fechado', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+  { id: 'not_started', title: 'Não Iniciado', icon: Clock, color: 'text-slate-400', bg: 'bg-white/5', hex: '#94a3b8' },
+  { id: 'in_negotiation', title: 'Em Negociação (IA)', icon: MessageCircleWarning, color: 'text-blue-400', bg: 'bg-blue-500/10', hex: '#60a5fa' },
+  { id: 'needs_attention', title: 'Requer Atenção', icon: AlertCircle, color: 'text-amber-400', bg: 'bg-amber-500/10', hex: '#fbbf24' },
+  { id: 'closed', title: 'Acordo Fechado', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10', hex: '#34d399' },
 ];
 
 export default function KanbanBoard() {
@@ -76,16 +77,77 @@ export default function KanbanBoard() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
+  const chartData = columns.map(col => {
+    const count = cases.filter(c => c.status === col.id).length;
+    return {
+      name: col.title,
+      value: count,
+      color: col.hex
+    };
+  }).filter(d => d.value > 0);
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-[#111318] border border-white/10 p-3 rounded-lg shadow-xl">
+          <p className="text-white text-sm font-medium mb-1">{payload[0].name}</p>
+          <p className="text-slate-400 text-xs">
+            {payload[0].value} {payload[0].value === 1 ? 'caso' : 'casos'}
+          </p>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="p-4 sm:p-6 md:p-8 min-h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)] flex flex-col">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white">Casos de Cobrança</h1>
           <p className="text-slate-500 text-xs sm:text-sm mt-0.5 sm:mt-1">Acompanhe as negociações da IA em tempo real</p>
         </div>
+
+        {chartData.length > 0 && !loading && (
+          <div className="flex-1 max-w-sm hidden md:flex items-center gap-6 bg-[#16181d] border border-white/5 p-4 rounded-xl">
+            <div className="h-24 w-24 shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={30}
+                    outerRadius={45}
+                    paddingAngle={3}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 flex-1">
+              {chartData.map((data, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: data.color }} />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-slate-400 truncate max-w-[90px]" title={data.name}>{data.name}</span>
+                    <span className="text-xs font-bold text-white">{data.value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <Link 
           href="/cases/new" 
-          className="inline-flex items-center justify-center px-4 py-2 sm:py-1.5 bg-white text-black text-xs sm:text-sm font-semibold rounded-lg sm:rounded-md hover:bg-slate-200 transition-colors w-full sm:w-auto shrink-0 shadow-sm"
+          className="inline-flex items-center justify-center px-4 py-2 sm:py-1.5 bg-white text-black text-xs sm:text-sm font-semibold rounded-lg sm:rounded-md hover:bg-slate-200 transition-colors w-full md:w-auto shrink-0 shadow-sm"
         >
           <Plus className="w-4 h-4 mr-2 shrink-0" />
           Novo Caso
