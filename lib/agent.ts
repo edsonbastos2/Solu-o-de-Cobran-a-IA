@@ -41,6 +41,7 @@ export async function processChat(caseId: string, message: string) {
   let aiProvider = 'gemini';
   let aiModel = 'gemini-3.5-flash';
   let apiKey = process.env.GEMINI_API_KEY || '';
+  let ollamaBaseUrl = 'http://localhost:11434';
 
   if (caseData.user_id) {
     const { data: profile } = await supabase
@@ -51,7 +52,7 @@ export async function processChat(caseId: string, message: string) {
 
     if (profile) {
       aiProvider = profile.ai_provider || 'gemini';
-      aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : 'claude-3-haiku');
+      aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : 'claude-3-haiku');
       
       if (aiProvider === 'gemini') {
         apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
@@ -59,6 +60,9 @@ export async function processChat(caseId: string, message: string) {
         apiKey = profile.openai_api_key || process.env.OPENAI_API_KEY || '';
       } else if (aiProvider === 'anthropic') {
         apiKey = profile.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '';
+      } else if (aiProvider === 'ollama') {
+        ollamaBaseUrl = profile.ollama_base_url || 'http://localhost:11434';
+        apiKey = 'ollama-no-key'; // Ollama doesn't require an API key by default
       }
     }
   }
@@ -154,6 +158,27 @@ export async function processChat(caseId: string, message: string) {
       if (response.content[0].type === 'text') {
         aiText = response.content[0].text;
       }
+    } else if (aiProvider === 'ollama') {
+      const openai = new OpenAI({ 
+        apiKey: 'ollama', 
+        baseURL: `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` 
+      });
+      
+      const messages: any[] = [
+        { role: 'system', content: systemPrompt },
+        ...(historyData?.map((msg: any) => ({
+          role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
+          content: msg.content
+        })) || []),
+        { role: 'user', content: message }
+      ];
+
+      const response = await openai.chat.completions.create({
+        model: aiModel,
+        messages: messages,
+        temperature: 0.2
+      });
+      aiText = response.choices[0].message.content || "Desculpe, não entendi.";
     }
   } catch (error: any) {
     console.error("AI API Error:", error);

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   gemini_api_key TEXT,
   openai_api_key TEXT,
   anthropic_api_key TEXT,
+  ollama_base_url TEXT DEFAULT 'http://localhost:11434',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );

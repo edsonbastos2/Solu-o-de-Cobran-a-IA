@@ -20,6 +20,7 @@ export default function SettingsPage() {
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
+  const [ollamaUrl, setOllamaUrl] = useState('');
   
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -44,6 +45,7 @@ export default function SettingsPage() {
           setGeminiKey(data.gemini_api_key || '');
           setOpenaiKey(data.openai_api_key || '');
           setAnthropicKey(data.anthropic_api_key || '');
+          setOllamaUrl(data.ollama_base_url || 'http://localhost:11434');
         } else if (error && error.code !== 'PGRST116') {
           console.error('Error loading profile:', error);
         }
@@ -76,6 +78,7 @@ export default function SettingsPage() {
           gemini_api_key: geminiKey,
           openai_api_key: openaiKey,
           anthropic_api_key: anthropicKey,
+          ollama_base_url: ollamaUrl,
           updated_at: new Date().toISOString(),
         });
         
@@ -250,34 +253,45 @@ export default function SettingsPage() {
                           <option value="gemini">Google Gemini</option>
                           <option value="openai">OpenAI (ChatGPT)</option>
                           <option value="anthropic">Anthropic (Claude)</option>
+                          <option value="ollama">Ollama (Modelos Locais)</option>
                         </select>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Modelo</label>
-                        <select 
-                          value={aiModel}
-                          onChange={(e) => setAiModel(e.target.value)}
-                          className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                        >
-                          {aiProvider === 'gemini' && (
-                            <>
-                              <option value="gemini-3.5-flash">Gemini 3.5 Flash (Rápido/Recomendado)</option>
-                              <option value="gemini-1.5-pro">Gemini 1.5 Pro (Mais inteligente)</option>
-                            </>
-                          )}
-                          {aiProvider === 'openai' && (
-                            <>
-                              <option value="gpt-4o">GPT-4o</option>
-                              <option value="gpt-4o-mini">GPT-4o Mini</option>
-                            </>
-                          )}
-                          {aiProvider === 'anthropic' && (
-                            <>
-                              <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
-                              <option value="claude-3-haiku">Claude 3 Haiku</option>
-                            </>
-                          )}
-                        </select>
+                        {aiProvider === 'ollama' ? (
+                          <input 
+                            type="text"
+                            value={aiModel}
+                            onChange={(e) => setAiModel(e.target.value)}
+                            placeholder="Ex: llama3"
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          />
+                        ) : (
+                          <select 
+                            value={aiModel}
+                            onChange={(e) => setAiModel(e.target.value)}
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          >
+                            {aiProvider === 'gemini' && (
+                              <>
+                                <option value="gemini-3.5-flash">Gemini 3.5 Flash (Rápido/Recomendado)</option>
+                                <option value="gemini-1.5-pro">Gemini 1.5 Pro (Mais inteligente)</option>
+                              </>
+                            )}
+                            {aiProvider === 'openai' && (
+                              <>
+                                <option value="gpt-4o">GPT-4o</option>
+                                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                              </>
+                            )}
+                            {aiProvider === 'anthropic' && (
+                              <>
+                                <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
+                                <option value="claude-3-haiku">Claude 3 Haiku</option>
+                              </>
+                            )}
+                          </select>
+                        )}
                       </div>
                     </div>
 
@@ -321,6 +335,20 @@ export default function SettingsPage() {
                             placeholder="sk-ant-..."
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
+                        </div>
+                      )}
+
+                      {aiProvider === 'ollama' && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">URL Base do Ollama</label>
+                          <input 
+                            type="text"
+                            value={ollamaUrl}
+                            onChange={(e) => setOllamaUrl(e.target.value)}
+                            placeholder="http://localhost:11434"
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          />
+                          <p className="text-xs text-slate-500 mt-2">Certifique-se de que o servidor do Ollama está rodando e acessível a partir desta aplicação.</p>
                         </div>
                       )}
                     </div>
