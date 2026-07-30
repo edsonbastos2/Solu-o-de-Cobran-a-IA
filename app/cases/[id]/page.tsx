@@ -4,9 +4,16 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Send, Bot, User, CheckCircle, AlertTriangle, UserCheck, Play, Pause } from 'lucide-react';
+import { ArrowLeft, Send, Bot, User, CheckCircle, AlertTriangle, UserCheck, Play, Pause, Zap } from 'lucide-react';
 
 import { Header } from '@/components/header';
+
+const QUICK_TEMPLATES = [
+  "Olá! Tudo bem? Podemos falar sobre a sua pendência?",
+  "Temos uma proposta de desconto especial para você hoje. Vamos negociar?",
+  "Conseguimos um parcelamento flexível para quitar sua dívida. O que acha?",
+  "Ainda aguardamos o seu retorno para resolvermos a pendência amigavelmente."
+];
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -324,8 +331,27 @@ export default function CaseDetailPage() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Quick Templates */}
+          <div className="bg-[#111318] border-t border-white/5 px-2.5 sm:px-3 pt-3 flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium px-1">
+              <Zap className="w-3.5 h-3.5 text-amber-400" /> Templates Rápidos
+            </div>
+            <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-hide">
+              {QUICK_TEMPLATES.map((template, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setAgentInput(template)}
+                  className="whitespace-nowrap px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-slate-300 transition-colors shrink-0"
+                >
+                  {template.length > 35 ? template.substring(0, 35) + '...' : template}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Human Intervention Input Bar */}
-          <form onSubmit={sendAgentMessage} className="p-2.5 sm:p-3 bg-[#111318] border-t border-white/5 flex gap-2 shrink-0">
+          <form onSubmit={sendAgentMessage} className="p-2.5 sm:p-3 bg-[#111318] flex gap-2 shrink-0">
             <input 
               type="text" 
               value={agentInput}

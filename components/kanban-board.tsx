@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Plus, MessageCircleWarning, Phone, AlertCircle, CheckCircle2, Clock, CalendarClock } from 'lucide-react';
+import { Plus, MessageCircleWarning, Phone, AlertCircle, CheckCircle2, Clock, CalendarClock, ArrowDownWideNarrow, ArrowUpNarrowWide, Filter } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { differenceInDays, parseISO } from 'date-fns';
 
@@ -29,6 +29,10 @@ export default function KanbanBoard() {
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Filters
+  const [sortDue, setSortDue] = useState<'asc' | 'desc' | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
 
   async function fetchCases() {
     if (!supabase) {
@@ -101,9 +105,24 @@ export default function KanbanBoard() {
     return null;
   };
 
+  const toggleSortDue = () => {
+    if (sortDue === null) setSortDue('asc');
+    else if (sortDue === 'asc') setSortDue('desc');
+    else setSortDue(null);
+  };
+
+  const filteredCases = [...cases].sort((a, b) => {
+    if (!sortDue) return 0;
+    if (!a.due_date) return sortDue === 'asc' ? 1 : -1;
+    if (!b.due_date) return sortDue === 'asc' ? -1 : 1;
+    const dateA = new Date(a.due_date).getTime();
+    const dateB = new Date(b.due_date).getTime();
+    return sortDue === 'asc' ? dateA - dateB : dateB - dateA;
+  });
+
   return (
     <div className="p-4 sm:p-6 md:p-8 min-h-[calc(100vh-4rem)] lg:h-[calc(100vh-4rem)] flex flex-col">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-white">Casos de Cobrança</h1>
           <p className="text-slate-500 text-xs sm:text-sm mt-0.5 sm:mt-1">Acompanhe as negociações da IA em tempo real</p>
@@ -155,6 +174,38 @@ export default function KanbanBoard() {
         </Link>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <button
+          onClick={toggleSortDue}
+          className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${sortDue ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'}`}
+        >
+          {sortDue === 'asc' ? <ArrowUpNarrowWide className="w-3.5 h-3.5 mr-1.5" /> : <ArrowDownWideNarrow className="w-3.5 h-3.5 mr-1.5" />}
+          Vencimento {sortDue === 'asc' ? '(Mais próximos)' : sortDue === 'desc' ? '(Mais distantes)' : ''}
+        </button>
+
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex items-center px-2 text-slate-500">
+            <Filter className="w-3.5 h-3.5 mr-1.5" />
+            <span className="text-xs font-medium">Status:</span>
+          </div>
+          <button
+            onClick={() => setFilterStatus(null)}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!filterStatus ? 'bg-white/10 border-white/20 text-white' : 'bg-transparent border-transparent text-slate-400 hover:bg-white/5'}`}
+          >
+            Todos
+          </button>
+          {columns.map(col => (
+            <button
+              key={col.id}
+              onClick={() => setFilterStatus(col.id)}
+              className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${filterStatus === col.id ? `${col.bg} ${col.color.replace('text-', 'border-').replace('400', '500/20')} ${col.color}` : 'bg-transparent border-transparent text-slate-400 hover:bg-white/5'}`}
+            >
+              {col.title}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {error && (
         <div className="mb-6 p-4 bg-red-500/10 text-red-500 rounded-md border border-red-500/20 text-sm">
           {error}
@@ -168,8 +219,8 @@ export default function KanbanBoard() {
       ) : (
         <div className="flex-1 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
           <div className="flex gap-4 sm:gap-6 min-w-max h-full pb-4 snap-x snap-mandatory">
-            {columns.map(col => {
-              const colCases = cases.filter(c => c.status === col.id);
+            {columns.filter(col => filterStatus ? col.id === filterStatus : true).map(col => {
+              const colCases = filteredCases.filter(c => c.status === col.id);
               const Icon = col.icon;
               
               return (
