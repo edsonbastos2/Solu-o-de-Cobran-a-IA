@@ -8,9 +8,12 @@ import { ArrowLeft, Upload, Save, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { calculateUpdatedValue } from '@/lib/finance';
 import { Header } from '@/components/header';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function NewCasePage() {
   const router = useRouter();
+  const { user } = useAuth();
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'manual' | 'csv'>('manual');
@@ -41,6 +44,7 @@ export default function NewCasePage() {
       const updatedValue = calculateUpdatedValue(valueNum, dateObj);
 
       const { data, error } = await supabase.from('cases').insert([{
+        user_id: user?.id,
         name,
         phone,
         original_value: valueNum,
@@ -96,6 +100,7 @@ export default function NewCasePage() {
               }
 
               return {
+                user_id: user?.id,
                 name: row.nome || row.name,
                 phone: row.telefone || row.phone,
                 original_value: valueNum,

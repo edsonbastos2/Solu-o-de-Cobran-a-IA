@@ -7,6 +7,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   phone TEXT,
   zapi_instance TEXT,
   zapi_key TEXT,
+  ai_provider TEXT DEFAULT 'gemini',
+  ai_model TEXT DEFAULT 'gemini-3.5-flash',
+  gemini_api_key TEXT,
+  openai_api_key TEXT,
+  anthropic_api_key TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -16,18 +21,21 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- 3. Cria políticas de segurança
 -- Permitir que o usuário veja apenas o seu próprio perfil
+DROP POLICY IF EXISTS "Usuários podem ver o próprio perfil" ON public.profiles;
 CREATE POLICY "Usuários podem ver o próprio perfil"
   ON public.profiles
   FOR SELECT
   USING (auth.uid() = id);
 
 -- Permitir que o usuário insira o próprio perfil
+DROP POLICY IF EXISTS "Usuários podem inserir o próprio perfil" ON public.profiles;
 CREATE POLICY "Usuários podem inserir o próprio perfil"
   ON public.profiles
   FOR INSERT
   WITH CHECK (auth.uid() = id);
 
 -- Permitir que o usuário atualize o próprio perfil
+DROP POLICY IF EXISTS "Usuários podem atualizar o próprio perfil" ON public.profiles;
 CREATE POLICY "Usuários podem atualizar o próprio perfil"
   ON public.profiles
   FOR UPDATE
@@ -48,3 +56,11 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- CORREÇÃO PARA A TABELA CASES:
+-- Se a tabela cases tem RLS ativado (row-level security), precisamos garantir que ela tem a coluna user_id
+ALTER TABLE public.cases ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+
+-- Atualizar política de inserção de casos para exigir o auth.uid()
+-- CREATE POLICY "Usuários podem inserir os próprios casos" ON public.cases FOR INSERT WITH CHECK (auth.uid() = user_id);
+

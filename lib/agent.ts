@@ -1,8 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { supabase } from '@/lib/supabase';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const SYSTEM_PROMPT = `Você é um agente de cobrança de dívidas educado, focado e objetivo trabalhando para um escritório de advocacia.
 Seu objetivo é fechar um acordo de pagamento com o devedor.
@@ -37,6 +37,36 @@ export async function processChat(caseId: string, message: string) {
     throw new Error("Caso não encontrado");
   }
 
+  // Fetch AI configuration from user profile
+  let aiProvider = 'gemini';
+  let aiModel = 'gemini-3.5-flash';
+  let apiKey = process.env.GEMINI_API_KEY || '';
+
+  if (caseData.user_id) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', caseData.user_id)
+      .single();
+
+    if (profile) {
+      aiProvider = profile.ai_provider || 'gemini';
+      aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : 'claude-3-haiku');
+      
+      if (aiProvider === 'gemini') {
+        apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
+      } else if (aiProvider === 'openai') {
+        apiKey = profile.openai_api_key || process.env.OPENAI_API_KEY || '';
+      } else if (aiProvider === 'anthropic') {
+        apiKey = profile.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '';
+      }
+    }
+  }
+
+  if (!apiKey) {
+    throw new Error(`Chave de API não configurada para o provedor ${aiProvider}. Configure nas opções (Settings) ou nas variáveis de ambiente.`);
+  }
+
   // 2. Fetch conversation history
   const { data: historyData, error: historyError } = await supabase
     .from('messages')
@@ -61,53 +91,74 @@ export async function processChat(caseId: string, message: string) {
     .replace('{max_discount_margin}', caseData.max_discount_margin.toString())
     .replace('{min_acceptable}', minAcceptable.toFixed(2));
 
-  const contents = historyData?.map((msg: any) => ({
-    role: (msg.role === 'ai' || msg.role === 'human') ? 'model' : 'user',
-    parts: [{ text: msg.content }]
-  })) || [];
-  
-  // Add current user message
-  contents.push({ role: 'user', parts: [{ text: message }] });
+  let aiText = "Desculpe, ocorreu um erro de comunicação com a inteligência artificial.";
 
-  let response;
-  let retries = 3;
-  let delay = 1000;
-  
-  const models = ['gemini-3.6-flash', 'gemini-3.1-pro-preview', 'gemini-flash-latest'];
-  let currentModelIndex = 0;
-  
-  while (retries > 0) {
-    try {
-      response = await ai.models.generateContent({
-        model: models[currentModelIndex],
+  try {
+    if (aiProvider === 'gemini') {
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const contents = historyData?.map((msg: any) => ({
+        role: (msg.role === 'ai' || msg.role === 'human') ? 'model' : 'user',
+        parts: [{ text: msg.content }]
+      })) || [];
+      contents.push({ role: 'user', parts: [{ text: message }] });
+
+      const response = await ai.models.generateContent({
+        model: aiModel,
         contents: contents,
         config: {
           systemInstruction: systemPrompt,
           temperature: 0.2
         }
       });
-      break;
-    } catch (error: any) {
-      const errorString = error?.message || String(error) || '';
-      const isCapacityError = error?.status === 503 || errorString.includes('503') || errorString.includes('UNAVAILABLE') || errorString.includes('high demand');
-      const isQuotaError = error?.status === 429 || errorString.includes('429') || errorString.includes('quota');
-      const isNotFoundError = error?.status === 404 || errorString.includes('404') || errorString.includes('not found');
+      aiText = response.text || "Desculpe, não entendi.";
       
-      if (retries > 1 && (isCapacityError || isQuotaError || isNotFoundError)) {
-        retries--;
-        if (currentModelIndex < models.length - 1) {
-          currentModelIndex++;
-        }
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2;
-      } else {
-        console.error("Gemini API Error:", errorString);
-        throw new Error(`Erro na API do Gemini: ${errorString.substring(0, 100)}... Verifique sua chave de API ou limites de uso.`);
+    } else if (aiProvider === 'openai') {
+      const openai = new OpenAI({ apiKey });
+      
+      const messages: any[] = [
+        { role: 'system', content: systemPrompt },
+        ...(historyData?.map((msg: any) => ({
+          role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
+          content: msg.content
+        })) || []),
+        { role: 'user', content: message }
+      ];
+
+      const response = await openai.chat.completions.create({
+        model: aiModel,
+        messages: messages,
+        temperature: 0.2
+      });
+      aiText = response.choices[0].message.content || "Desculpe, não entendi.";
+
+    } else if (aiProvider === 'anthropic') {
+      const anthropic = new Anthropic({ apiKey });
+      
+      const messages: any[] = [
+        ...(historyData?.map((msg: any) => ({
+          role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
+          content: msg.content
+        })) || []),
+        { role: 'user', content: message }
+      ];
+
+      const response = await anthropic.messages.create({
+        model: aiModel,
+        system: systemPrompt,
+        max_tokens: 1024,
+        messages: messages,
+        temperature: 0.2
+      });
+      
+      if (response.content[0].type === 'text') {
+        aiText = response.content[0].text;
       }
     }
+  } catch (error: any) {
+    console.error("AI API Error:", error);
+    throw new Error(`Erro na API do ${aiProvider}: ${error.message || String(error)}`);
   }
-
-  const aiText = response?.text || "Desculpe, não entendi.";
 
   // 5. Save AI response
   await supabase.from('messages').insert({

@@ -1,9 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const SYSTEM_PROMPT = `Você é um agente de cobrança de dívidas educado, focado e objetivo trabalhando para um escritório de advocacia.
 Seu objetivo é iniciar a abordagem para tentar fechar um acordo de pagamento com o devedor.
@@ -41,6 +41,36 @@ export async function POST(req: NextRequest) {
     if (caseData.status !== 'not_started') {
       return NextResponse.json({ error: "Este caso já foi iniciado." }, { status: 400 });
     }
+    
+    // Fetch AI configuration from user profile
+    let aiProvider = 'gemini';
+    let aiModel = 'gemini-3.5-flash';
+    let apiKey = process.env.GEMINI_API_KEY || '';
+
+    if (caseData.user_id) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', caseData.user_id)
+        .single();
+
+      if (profile) {
+        aiProvider = profile.ai_provider || 'gemini';
+        aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : 'claude-3-haiku');
+        
+        if (aiProvider === 'gemini') {
+          apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
+        } else if (aiProvider === 'openai') {
+          apiKey = profile.openai_api_key || process.env.OPENAI_API_KEY || '';
+        } else if (aiProvider === 'anthropic') {
+          apiKey = profile.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '';
+        }
+      }
+    }
+
+    if (!apiKey) {
+      return NextResponse.json({ error: `Chave de API não configurada para o provedor ${aiProvider}. Configure nas opções (Settings) ou nas variáveis de ambiente.` }, { status: 500 });
+    }
 
     const minAcceptable = caseData.updated_value * (1 - caseData.max_discount_margin / 100);
     const systemPrompt = SYSTEM_PROMPT
@@ -49,45 +79,50 @@ export async function POST(req: NextRequest) {
       .replace('{max_discount_margin}', caseData.max_discount_margin.toString())
       .replace('{min_acceptable}', minAcceptable.toFixed(2));
 
-    let response;
-    let retries = 3;
-    let delay = 1000;
-    
-    const models = ['gemini-3.6-flash', 'gemini-3.1-pro-preview', 'gemini-flash-latest'];
-    let currentModelIndex = 0;
-    
-    while (retries > 0) {
-      try {
-        response = await ai.models.generateContent({
-          model: models[currentModelIndex],
+    let aiText = "Olá, precisamos falar sobre uma pendência. Poderia confirmar se estou falando com " + caseData.name + "?";
+
+    try {
+      if (aiProvider === 'gemini') {
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+          model: aiModel,
           contents: "Gere a primeira mensagem de contato baseada nas instruções.",
           config: {
             systemInstruction: systemPrompt,
             temperature: 0.3
           }
         });
-        break;
-      } catch (error: any) {
-        const errorString = error?.message || String(error) || '';
-        const isCapacityError = error?.status === 503 || errorString.includes('503') || errorString.includes('UNAVAILABLE') || errorString.includes('high demand');
-        const isQuotaError = error?.status === 429 || errorString.includes('429') || errorString.includes('quota');
-        const isNotFoundError = error?.status === 404 || errorString.includes('404') || errorString.includes('not found');
-        
-        if (retries > 1 && (isCapacityError || isQuotaError || isNotFoundError)) {
-          retries--;
-          if (currentModelIndex < models.length - 1) {
-            currentModelIndex++;
-          }
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 2;
-        } else {
-          console.error("Gemini API Error:", errorString);
-          return NextResponse.json({ error: `Erro na API do Gemini: ${errorString.substring(0, 100)}... Verifique sua chave de API ou limites de uso.` }, { status: 500 });
+        if (response.text) aiText = response.text;
+      } else if (aiProvider === 'openai') {
+        const openai = new OpenAI({ apiKey });
+        const response = await openai.chat.completions.create({
+          model: aiModel,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: 'Gere a primeira mensagem de contato baseada nas instruções.' }
+          ],
+          temperature: 0.3
+        });
+        if (response.choices[0].message.content) aiText = response.choices[0].message.content;
+      } else if (aiProvider === 'anthropic') {
+        const anthropic = new Anthropic({ apiKey });
+        const response = await anthropic.messages.create({
+          model: aiModel,
+          system: systemPrompt,
+          max_tokens: 1024,
+          messages: [
+            { role: 'user', content: 'Gere a primeira mensagem de contato baseada nas instruções.' }
+          ],
+          temperature: 0.3
+        });
+        if (response.content[0].type === 'text') {
+          aiText = response.content[0].text;
         }
       }
+    } catch (error: any) {
+      console.error("AI API Error:", error);
+      return NextResponse.json({ error: `Erro na API do ${aiProvider}: ${error.message || String(error)}` }, { status: 500 });
     }
-
-    const aiText = response?.text || "Olá, precisamos falar sobre uma pendência. Poderia confirmar se estou falando com " + caseData.name + "?";
 
     await supabase.from('messages').insert({
       case_id: caseId,
@@ -104,8 +139,9 @@ export async function POST(req: NextRequest) {
     await supabase.from('cases').update({ status: 'in_negotiation' }).eq('id', caseId);
 
     return NextResponse.json({ text: aiText, newStatus: 'in_negotiation' });
+
   } catch (error: any) {
-    console.error("Gemini Error:", error);
+    console.error("API Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
