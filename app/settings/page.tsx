@@ -5,6 +5,7 @@ import { Header } from '@/components/header';
 import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, AlertTriangle, Bot } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import { formatPhoneInput } from '@/lib/utils';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -39,7 +40,7 @@ export default function SettingsPage() {
         
         if (data) {
           setName(data.name || '');
-          setPhone(data.phone || '');
+          setPhone(data.phone ? formatPhoneInput(data.phone) : '');
           setZapiInstance(data.zapi_instance || '');
           setZapiKey(data.zapi_key || '');
           setZapiClientToken(data.zapi_client_token || '');
@@ -194,7 +195,7 @@ export default function SettingsPage() {
                               <input 
                                 type="text"
                                 value={phone}
-                                onChange={(e) => setPhone(e.target.value)}
+                                onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
                                 placeholder="(11) 99999-9999"
                                 className="w-full bg-[#0e1014] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
                               />

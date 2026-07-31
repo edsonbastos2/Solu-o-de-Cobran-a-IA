@@ -7,6 +7,8 @@ import { Plus, MessageCircleWarning, Phone, AlertCircle, CheckCircle2, Clock, Ca
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { differenceInDays, parseISO } from 'date-fns';
 import useSWR from 'swr';
+import { formatPhoneInput } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 type Case = {
   id: string;
@@ -26,12 +28,18 @@ const columns = [
   { id: 'closed', title: 'Acordo Fechado', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10', hex: '#34d399' },
 ];
 
-const fetchCases = async () => {
+const fetchCases = async (keyArgs: any[]) => {
+  const [, userId, isSuperAdmin] = keyArgs;
   if (!supabase) throw new Error("Supabase não configurado. Adicione as variáveis de ambiente.");
-  const { data, error } = await supabase
-    .from('cases')
-    .select('*')
-    .order('created_at', { ascending: false });
+  
+  let query = supabase.from('cases').select('*');
+  
+  // If not a super admin, only show cases for the current user
+  if (!isSuperAdmin && userId) {
+    query = query.eq('user_id', userId);
+  }
+  
+  const { data, error } = await query.order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
 };
@@ -51,10 +59,15 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 export default function KanbanBoard() {
-  const { data: cases, error, mutate } = useSWR<Case[]>('cases', fetchCases, {
-    revalidateOnFocus: false, // Avoid excessive revalidation, realtime handles updates
-  });
-  const loading = !cases && !error;
+  const { user, profile, loading: authLoading } = useAuth();
+  const { data: cases, error, mutate } = useSWR<Case[]>(
+    user ? ['cases', user.id, profile?.is_super_admin] : null, 
+    fetchCases, 
+    {
+      revalidateOnFocus: false, // Avoid excessive revalidation, realtime handles updates
+    }
+  );
+  const loading = authLoading || (!!user && cases === undefined && !error);
   
   // Filters
   const [sortDue, setSortDue] = useState<'asc' | 'desc' | null>(null);
@@ -196,7 +209,7 @@ export default function KanbanBoard() {
 
       {error && (
         <div className="mb-6 p-4 bg-red-500/10 text-red-500 rounded-md border border-red-500/20 text-sm">
-          {error}
+          {typeof error === 'object' ? (error as any).message || JSON.stringify(error) : String(error)}
         </div>
       )}
 
@@ -252,7 +265,7 @@ export default function KanbanBoard() {
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center text-xs text-slate-400 font-mono">
                                 <Phone className="w-3 h-3 mr-1.5 opacity-60 shrink-0" />
-                                {c.phone}
+                                {formatPhoneInput(c.phone)}
                               </div>
                               {badge}
                             </div>

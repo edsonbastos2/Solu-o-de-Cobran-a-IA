@@ -8,6 +8,8 @@ import { ArrowLeft, Send, Bot, User, CheckCircle, AlertTriangle, UserCheck, Play
 import useSWR from 'swr';
 
 import { Header } from '@/components/header';
+import { formatPhoneInput } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
 const QUICK_TEMPLATES = [
   "Olá! Tudo bem? Podemos falar sobre a sua pendência?",
@@ -16,10 +18,17 @@ const QUICK_TEMPLATES = [
   "Ainda aguardamos o seu retorno para resolvermos a pendência amigavelmente."
 ];
 
-const fetchCaseData = async (caseId: string) => {
+const fetchCaseData = async (keyArgs: any[]) => {
+  const [, caseId, userId, isSuperAdmin] = keyArgs;
   if (!supabase) throw new Error("Supabase não configurado.");
+  
+  let caseQuery = supabase.from('cases').select('*').eq('id', caseId);
+  if (!isSuperAdmin && userId) {
+    caseQuery = caseQuery.eq('user_id', userId);
+  }
+  
   const [caseRes, msgRes, logsRes] = await Promise.all([
-    supabase.from('cases').select('*').eq('id', caseId).single(),
+    caseQuery.single(),
     supabase.from('messages').select('*').eq('case_id', caseId).order('created_at', { ascending: true }),
     supabase.from('audit_logs').select('*').eq('case_id', caseId).order('created_at', { ascending: false })
   ]);
@@ -35,16 +44,21 @@ export default function CaseDetailPage() {
   const params = useParams();
   const caseId = params?.id as string;
   const router = useRouter();
+  const { user, profile, loading: authLoading } = useAuth();
 
-  const { data, error, mutate } = useSWR(caseId ? `case-${caseId}` : null, () => fetchCaseData(caseId), {
-    revalidateOnFocus: false, // Relies on realtime events
-  });
+  const { data, error, mutate } = useSWR(
+    (caseId && user) ? ['case', caseId, user.id, profile?.is_super_admin] : null, 
+    fetchCaseData, 
+    {
+      revalidateOnFocus: false, // Relies on realtime events
+    }
+  );
 
   const caseData = data?.caseData;
   const messages: any[] = data?.messages || [];
   const auditLogs: any[] = data?.auditLogs || [];
   
-  const loading = !data && !error;
+  const loading = authLoading || (!!user && !data && !error);
 
   const [agentInput, setAgentInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -97,7 +111,7 @@ export default function CaseDetailPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages.length]);
 
   const startConversation = async () => {
     setSending(true);
@@ -198,7 +212,7 @@ export default function CaseDetailPage() {
             </Link>
             <div>
               <h1 className="text-lg sm:text-xl font-bold text-white leading-tight">{caseData.name}</h1>
-              <p className="text-xs sm:text-sm text-slate-500 font-mono">{caseData.phone}</p>
+              <p className="text-xs sm:text-sm text-slate-500 font-mono">{formatPhoneInput(caseData.phone)}</p>
             </div>
           </div>
           

@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { calculateUpdatedValue } from '@/lib/finance';
 import { Header } from '@/components/header';
 import { useAuth } from '@/hooks/useAuth';
+import { formatPhoneInput, formatCurrencyInput, parseCurrency } from '@/lib/utils';
 
 export default function NewCasePage() {
   const router = useRouter();
@@ -37,7 +38,7 @@ export default function NewCasePage() {
     try {
       if (!supabase) throw new Error("Supabase não configurado.");
 
-      const valueNum = parseFloat(originalValue);
+      const valueNum = parseCurrency(originalValue);
       const marginNum = parseFloat(margin);
       const dateObj = new Date(dueDate);
       
@@ -185,18 +186,18 @@ export default function NewCasePage() {
                     <label className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Telefone (WhatsApp)</label>
                     <input 
                       required type="text" 
-                      value={phone} onChange={e => setPhone(e.target.value)}
+                      value={phone} onChange={e => setPhone(formatPhoneInput(e.target.value))}
                       className="w-full px-3 py-2 bg-[#0e1014] border border-white/10 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 placeholder-slate-600 text-xs sm:text-sm"
-                      placeholder="Ex: 11999999999"
+                      placeholder="Ex: (11) 99999-9999"
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] sm:text-xs font-semibold text-slate-400 uppercase tracking-wider">Valor Original (R$)</label>
                     <input 
-                      required type="number" step="0.01" min="0"
-                      value={originalValue} onChange={e => setOriginalValue(e.target.value)}
+                      required type="text"
+                      value={originalValue} onChange={e => setOriginalValue(formatCurrencyInput(e.target.value))}
                       className="w-full px-3 py-2 bg-[#0e1014] border border-white/10 rounded-md text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 placeholder-slate-600 text-xs sm:text-sm"
-                      placeholder="Ex: 1500.00"
+                      placeholder="Ex: R$ 1.500,00"
                     />
                   </div>
                   <div className="space-y-1.5">
