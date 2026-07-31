@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, LogOut } from 'lucide-react';
+import { Bot, LogOut, Shield } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -9,6 +9,7 @@ import Link from 'next/link';
 export function Header() {
   const router = useRouter();
   const { user } = useAuth();
+  const isSuperAdmin = user?.email === 'bastose132@gmail.com';
 
   const handleLogout = async () => {
     if (supabase) {
@@ -31,6 +32,12 @@ export function Header() {
         <span className="font-bold text-white tracking-tight text-base sm:text-lg">CobrançaIA</span>
       </Link>
       <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm">
+        {isSuperAdmin && (
+          <Link href="/admin/users" className="hidden sm:flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-md hover:bg-emerald-500/20 transition-colors font-medium border border-emerald-500/20">
+            <Shield className="w-4 h-4" />
+            Painel Admin
+          </Link>
+        )}
         <span className="text-slate-500 hidden sm:inline">{user?.email || 'Painel do Advogado'}</span>
         <div className="w-px h-5 sm:h-6 bg-white/10 hidden sm:block"></div>
         <Link href="/settings" className="hover:opacity-80 transition-opacity">
