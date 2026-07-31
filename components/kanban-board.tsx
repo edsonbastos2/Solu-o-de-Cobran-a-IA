@@ -36,6 +36,20 @@ const fetchCases = async () => {
   return data || [];
 };
 
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-[#111318] border border-white/10 p-3 rounded-lg shadow-xl">
+        <p className="text-white font-medium mb-1">{payload[0].name}</p>
+        <p className="text-slate-400 text-sm">
+          Total: <span className="text-white font-medium">{payload[0].value}</span> casos
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function KanbanBoard() {
   const { data: cases, error, mutate } = useSWR<Case[]>('cases', fetchCases, {
     revalidateOnFocus: false, // Avoid excessive revalidation, realtime handles updates
@@ -78,20 +92,6 @@ export default function KanbanBoard() {
       color: col.hex
     };
   }).filter(d => d.value > 0);
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-[#111318] border border-white/10 p-3 rounded-lg shadow-xl">
-          <p className="text-white text-sm font-medium mb-1">{payload[0].name}</p>
-          <p className="text-slate-400 text-xs">
-            {payload[0].value} {payload[0].value === 1 ? 'caso' : 'casos'}
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
 
   const toggleSortDue = () => {
     if (sortDue === null) setSortDue('asc');
