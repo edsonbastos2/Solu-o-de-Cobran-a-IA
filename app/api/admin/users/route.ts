@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export async function POST(req: NextRequest) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Supabase admin não configurado' }, { status: 500 });
+      return NextResponse.json({ error: 'Supabase admin não configurado. Verifique se as variáveis NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY estão preenchidas.' }, { status: 500 });
     }
 
     const { email, password, name, phone, is_super_admin } = await req.json();

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Supabase admin não configurado' }, { status: 500 });
+      return NextResponse.json({ error: 'Supabase admin não configurado. Verifique a variável SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 });
     }
 
     const { id } = await params;
@@ -40,8 +41,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
-      return NextResponse.json({ error: 'Supabase admin não configurado' }, { status: 500 });
+      return NextResponse.json({ error: 'Supabase admin não configurado. Verifique a variável SUPABASE_SERVICE_ROLE_KEY' }, { status: 500 });
     }
 
     const { id } = await params;
