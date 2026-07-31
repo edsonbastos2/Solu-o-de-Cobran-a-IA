@@ -45,25 +45,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleSignUp = async () => {
-    if (!supabase) {
-      setError('Configuração do Supabase ausente.');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-    if (error) {
-      setError(error.message);
-    } else {
-      setError('Verifique seu email para confirmar o cadastro (ou tente fazer login se estiver desabilitado).');
-    }
-    setLoading(false);
-  };
-
   return (
     <div className="min-h-screen bg-[#0c0d10] flex items-center justify-center p-4">
       <motion.div 
@@ -115,14 +96,6 @@ export default function LoginPage() {
             >
               <LogIn className="w-4 h-4" />
               {loading ? 'Entrando...' : 'Entrar'}
-            </button>
-            <button
-              type="button"
-              onClick={handleSignUp}
-              disabled={loading}
-              className="w-full bg-transparent border border-white/10 hover:bg-white/5 text-slate-300 font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50"
-            >
-              Criar nova conta
             </button>
           </div>
         </form>
