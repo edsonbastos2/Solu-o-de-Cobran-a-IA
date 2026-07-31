@@ -27,7 +27,7 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS anthropic_api_key TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS openrouter_api_key TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ollama_base_url TEXT DEFAULT 'http://localhost:11434';
 
--- 3. Habilita Row Level Security (RLS)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS zapi_client_token TEXT;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- 3. Cria políticas de segurança

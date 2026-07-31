@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Send message to WhatsApp via Z-API
     if (caseData.phone) {
-      await sendWhatsAppMessage(caseData.phone, message.trim());
+      await sendWhatsAppMessage(caseData.phone, message.trim(), caseData.user_id);
     }
 
     // 4. Set case status to needs_attention (human takeover) if it was in_negotiation or not_started

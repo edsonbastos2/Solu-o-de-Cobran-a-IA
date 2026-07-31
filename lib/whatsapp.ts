@@ -1,6 +1,23 @@
-export async function sendWhatsAppMessage(to: string, message: string) {
-  const instanceId = process.env.ZAPI_INSTANCE_ID;
-  const token = process.env.ZAPI_TOKEN;
+import { supabase } from './supabase';
+
+export async function sendWhatsAppMessage(to: string, message: string, userId?: string) {
+  let instanceId = process.env.ZAPI_INSTANCE_ID;
+  let token = process.env.ZAPI_TOKEN;
+  let clientToken = "F6878a6908a754c0ea7b778bd45a51c10S";
+
+  if (userId && supabase) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('zapi_instance, zapi_key, zapi_client_token')
+      .eq('id', userId)
+      .single();
+    
+    if (profile) {
+      if (profile.zapi_instance) instanceId = profile.zapi_instance;
+      if (profile.zapi_key) token = profile.zapi_key;
+      if (profile.zapi_client_token) clientToken = profile.zapi_client_token;
+    }
+  }
 
   if (!instanceId || !token) {
     console.warn("Z-API credentials missing. Simulating sending message to:", to);
@@ -13,9 +30,6 @@ export async function sendWhatsAppMessage(to: string, message: string) {
   if (formattedPhone.length >= 10 && !formattedPhone.startsWith('55')) {
     formattedPhone = `55${formattedPhone}`;
   }
-
-  // Prefer the specific token the user provided.
-  const clientToken = "F6878a6908a754c0ea7b778bd45a51c10S";
 
   try {
     const response = await fetch(

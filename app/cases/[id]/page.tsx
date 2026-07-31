@@ -387,7 +387,7 @@ export default function CaseDetailPage() {
         </div>
 
         {/* Lawyer Details Panel */}
-        <div className="w-full lg:w-80 shrink-0 space-y-4">
+        <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4 sm:gap-6 lg:overflow-y-auto lg:pr-2 lg:pb-2">
           <div className="bg-[#16181d] border border-white/5 rounded-xl p-4 sm:p-5 shadow-sm">
             <h3 className="font-semibold text-white mb-3 sm:mb-4 flex items-center text-xs sm:text-sm">
               <AlertTriangle className="w-4 h-4 mr-2 text-emerald-500 shrink-0" />

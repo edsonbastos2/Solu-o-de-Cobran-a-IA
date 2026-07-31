@@ -203,7 +203,7 @@ export async function processChat(caseId: string, message: string) {
   // Send to real WhatsApp (if configured)
   if (caseData.phone) {
     // Run asynchronously, don't await so we can return response quickly
-    sendWhatsAppMessage(caseData.phone, cleanAiText).catch(err => {
+    sendWhatsAppMessage(caseData.phone, cleanAiText, caseData.user_id).catch(err => {
       console.error("Error in background WhatsApp send:", err);
     });
   }

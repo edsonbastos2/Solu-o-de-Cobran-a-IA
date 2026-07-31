@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
             if (lastMessage.content !== followUpText) {
                // 5. Enviar mensagem via WhatsApp Z-API
                if (c.phone) {
-                 await sendWhatsAppMessage(c.phone, followUpText).catch(err => {
+                 await sendWhatsAppMessage(c.phone, followUpText, c.user_id).catch(err => {
                    console.error(`Erro ao enviar WhatsApp follow-up para ${c.phone}:`, err);
                  });
                }

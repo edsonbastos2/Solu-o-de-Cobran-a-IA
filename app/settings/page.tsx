@@ -14,6 +14,7 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState('');
   const [zapiInstance, setZapiInstance] = useState('');
   const [zapiKey, setZapiKey] = useState('');
+  const [zapiClientToken, setZapiClientToken] = useState('');
   
   const [aiProvider, setAiProvider] = useState('gemini');
   const [aiModel, setAiModel] = useState('gemini-3.5-flash');
@@ -41,6 +42,7 @@ export default function SettingsPage() {
           setPhone(data.phone || '');
           setZapiInstance(data.zapi_instance || '');
           setZapiKey(data.zapi_key || '');
+          setZapiClientToken(data.zapi_client_token || '');
           setAiProvider(data.ai_provider || 'gemini');
           setAiModel(data.ai_model || 'gemini-3.5-flash');
           setGeminiKey(data.gemini_api_key || '');
@@ -75,6 +77,7 @@ export default function SettingsPage() {
           phone,
           zapi_instance: zapiInstance,
           zapi_key: zapiKey,
+          zapi_client_token: zapiClientToken,
           ai_provider: aiProvider,
           ai_model: aiModel,
           gemini_api_key: geminiKey,
@@ -222,11 +225,21 @@ export default function SettingsPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token de Segurança (Client-Token)</label>
+                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token da Instância</label>
                         <input 
                           type="password"
                           value={zapiKey}
                           onChange={(e) => setZapiKey(e.target.value)}
+                          placeholder="Ex: A5B2C..."
+                          className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token de Segurança (Client-Token)</label>
+                        <input 
+                          type="password"
+                          value={zapiClientToken}
+                          onChange={(e) => setZapiClientToken(e.target.value)}
                           placeholder="••••••••••••••••"
                           className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                         />

@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (caseData.phone) {
-      sendWhatsAppMessage(caseData.phone, aiText).catch(err => {
+      sendWhatsAppMessage(caseData.phone, aiText, caseData.user_id).catch(err => {
         console.error("Error in background WhatsApp send:", err);
       });
     }

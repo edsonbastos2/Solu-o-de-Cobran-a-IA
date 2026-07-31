@@ -254,11 +254,11 @@ export default function KanbanBoard() {
                       }
 
                       return (
-                        <Link key={c.id} href={`/cases/${c.id}`}>
+                        <Link key={c.id} href={`/cases/${c.id}`} prefetch={true}>
                           <div className="bg-[#0e1014] p-3.5 sm:p-4 rounded-lg border border-white/5 hover:bg-white/[0.02] transition-colors cursor-pointer group">
-                            <div className="flex justify-between items-start mb-2">
-                              <h4 className="font-medium text-slate-200 group-hover:text-emerald-400 transition-colors text-sm sm:text-base leading-tight">{c.name}</h4>
-                              <span className="text-[10px] text-slate-500 font-mono tracking-wider shrink-0 ml-2">#{c.id.substring(0,6)}</span>
+                            <div className="flex justify-between items-start mb-2 gap-2">
+                              <h4 className="font-medium text-slate-200 group-hover:text-emerald-400 transition-colors text-sm sm:text-base leading-tight truncate">{c.name}</h4>
+                              <span className="text-[10px] text-slate-500 font-mono tracking-wider shrink-0 mt-0.5">#{c.id.substring(0,6)}</span>
                             </div>
                             
                             <div className="flex items-center justify-between mb-3">

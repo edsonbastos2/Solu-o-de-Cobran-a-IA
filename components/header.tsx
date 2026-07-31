@@ -31,8 +31,8 @@ export function Header() {
         <span className="font-bold text-white tracking-tight text-base sm:text-lg">CobrançaIA</span>
       </Link>
       <div className="flex items-center gap-3 sm:gap-4 text-xs sm:text-sm">
-        <span className="text-slate-500 hidden xs:inline">{user?.email || 'Painel do Advogado'}</span>
-        <div className="w-px h-5 sm:h-6 bg-white/10 hidden xs:block"></div>
+        <span className="text-slate-500 hidden sm:inline">{user?.email || 'Painel do Advogado'}</span>
+        <div className="w-px h-5 sm:h-6 bg-white/10 hidden sm:block"></div>
         <Link href="/settings" className="hover:opacity-80 transition-opacity">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-xs shadow-lg shrink-0">
             {getInitials(user?.email)}
