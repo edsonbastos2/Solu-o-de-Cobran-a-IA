@@ -9,6 +9,7 @@ import { differenceInDays, parseISO } from 'date-fns';
 import useSWR from 'swr';
 import { formatPhoneInput } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { getCollectionStage } from '@/lib/finance';
 
 type Case = {
   id: string;
@@ -240,6 +241,7 @@ export default function KanbanBoard() {
                   
                   <div className="flex-1 p-3 overflow-y-auto space-y-3">
                     {colCases.map(c => {
+                      const stage = getCollectionStage(c.due_date, c.max_discount_margin, c.status);
                       let badge = null;
                       if (c.due_date && c.status !== 'closed') {
                         try {
@@ -261,6 +263,12 @@ export default function KanbanBoard() {
                               <h4 className="font-medium text-slate-200 group-hover:text-emerald-400 transition-colors text-sm sm:text-base leading-tight truncate">{c.name}</h4>
                               <span className="text-[10px] text-slate-500 font-mono tracking-wider shrink-0 mt-0.5">#{c.id.substring(0,6)}</span>
                             </div>
+
+                            <div className="mb-2">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold border ${stage.badgeBg} ${stage.badgeText} ${stage.badgeBorder}`}>
+                                {stage.name}
+                              </span>
+                            </div>
                             
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center text-xs text-slate-400 font-mono">
@@ -276,8 +284,8 @@ export default function KanbanBoard() {
                               <p className="font-bold text-slate-200 text-xs sm:text-sm">{formatCurrency(c.updated_value)}</p>
                             </div>
                             <div className="text-right">
-                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Margem</p>
-                              <p className="text-xs font-mono text-emerald-400">{c.max_discount_margin}%</p>
+                              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Margem Estágio</p>
+                              <p className="text-xs font-mono text-emerald-400">{stage.effectiveMaxDiscount}%</p>
                             </div>
                           </div>
                         </div>

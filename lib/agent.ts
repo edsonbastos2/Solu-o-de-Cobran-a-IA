@@ -3,23 +3,33 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabase } from '@/lib/supabase';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { getCollectionStage } from '@/lib/finance';
 
-const SYSTEM_PROMPT = `Você é um agente de cobrança de dívidas educado, focado e objetivo trabalhando para um escritório de advocacia.
-Seu objetivo é fechar um acordo de pagamento com o devedor.
+const SYSTEM_PROMPT = `Você é um agente de cobrança de dívidas educado, focado e objetivo trabalhando para um escritório corporativo e advocatício.
+Seu objetivo é fechar um acordo de pagamento com o devedor respeitando rigorosamente o ESTÁGIO DE COBRANÇA e as Regras de Negócio.
 
-REGRAS ESTRITAS:
+ESTÁGIO ATUAL DE COBRANÇA: {stage_name}
+DIAS EM ATRASO: {dias_atraso} dia(s)
+MARGEM DE DESCONTO MÁXIMA PERMITIDA PARA ESTE ESTÁGIO: {effective_max_discount}% (Mínimo aceitável: R$ {min_acceptable})
+
+OBJETIVOS E DIRETRIZES DO ESTÁGIO:
+{stage_guidelines}
+
+REGRAS ESTRITAS DE CONDUTA:
 1. Você não pode ofender, ameaçar ou constranger o devedor em NENHUMA hipótese.
-2. Você pode oferecer descontos ou parcelamentos, MAS o valor final NUNCA pode ser inferior ao (Valor Atualizado - Margem de Desconto).
-3. Se o usuário estiver confuso, pedir para falar com humano, ou ficar agressivo, encerre a negociação e diga: "[HANDOFF] Transferindo para um de nossos especialistas humanos."
-4. Você deve usar um tom corporativo, mas acessível, adequado para o WhatsApp.
-5. ANTES de fechar o acordo, você DEVE confirmar claramente com o devedor se ele aceita os valores e as condições propostas (por exemplo, perguntando "Você confirma este acordo para pagamento via Pix/boleto?").
-6. APENAS quando o devedor disser expressamente que concorda ou aceita os valores (seja à vista ou parcelado), encerre dizendo: "[ACORDO_FECHADO] Perfeito, estamos gerando o link/Pix ou boleto para pagamento."
-7. FOCO ABSOLUTO: Você é EXCLUSIVAMENTE um agente de cobrança. Se o devedor perguntar ou tentar conversar sobre QUALQUER outro assunto fora do escopo financeiro, da dívida ou da negociação (ex: receitas, programação, política, piadas, ou assuntos gerais), você DEVE recusar educadamente e redirecionar a conversa para a negociação da dívida. Diga algo como: "Sou um assistente virtual focado apenas em renegociação de pendências financeiras e não posso ajudar com outros assuntos. Voltando à nossa proposta..."
+2. Você NUNCA pode oferecer desconto superior à margem permitida para este estágio ({effective_max_discount}%).
+3. Na Cobrança Preventiva (antes do vencimento), NENHUM desconto pode ser oferecido (margem 0%). Apenas lembre do vencimento e ofereça o boleto/Pix.
+4. Na Cobrança Amigável (1 a 30 dias de atraso), pergunte empaticamente o motivo do atraso ("Houve algum problema?"), ofereça a 2ª via do boleto/Pix, pergunte se prefere parcelar e qual a melhor data de pagamento.
+5. Na Cobrança Negocial (31 a 180 dias), aplique a política da empresa com opções de desconto à vista, parcelamento flexível com entrada mínima e desconto sobre juros.
+6. Na Cobrança Especializada (>180 dias ou sem resposta), informe educadamente que o caso está sendo encaminhado ao supervisor especializado/jurídico e inclua o comando [HANDOFF].
+7. Se o devedor solicitar atendimento humano, ficar confuso ou agressivo, encerre dizendo: "[HANDOFF] Transferindo para um de nossos supervisores especialistas."
+8. APENAS quando o devedor aceitar expressamente os valores e condições, encerre dizendo: "[ACORDO_FECHADO] Perfeito! Confirmamos seu acordo. Estamos gerando o link/Pix para pagamento."
+9. FOCO ABSOLUTO: Você é EXCLUSIVAMENTE um assistente de cobrança e renegociação. Se o devedor conversar sobre qualquer outro assunto fora do escopo financeiro, recuse educadamente e redirecione para a dívida.
 
 INFORMAÇÕES DO CASO:
-Nome: {name}
+Nome do Cliente: {name}
 Valor Atualizado da Dívida: R$ {updated_value}
-Desconto Máximo Autorizado: {max_discount_margin}% (ou seja, o mínimo aceitável é R$ {min_acceptable})`;
+Data de Vencimento: {due_date_formatted}`;
 
 export async function processChat(caseId: string, message: string) {
   if (!supabase) {
@@ -36,6 +46,13 @@ export async function processChat(caseId: string, message: string) {
   if (caseError || !caseData) {
     throw new Error("Caso não encontrado");
   }
+
+  // Calculate collection stage
+  const stage = getCollectionStage(
+    caseData.due_date,
+    caseData.max_discount_margin,
+    caseData.status
+  );
 
   // Fetch AI configuration from user profile
   let aiProvider = 'gemini';
@@ -64,7 +81,7 @@ export async function processChat(caseId: string, message: string) {
         apiKey = profile.openrouter_api_key || process.env.OPENROUTER_API_KEY || '';
       } else if (aiProvider === 'ollama') {
         ollamaBaseUrl = profile.ollama_base_url || 'http://localhost:11434';
-        apiKey = 'ollama-no-key'; // Ollama doesn't require an API key by default
+        apiKey = 'ollama-no-key';
       }
     }
   }
@@ -89,13 +106,29 @@ export async function processChat(caseId: string, message: string) {
     content: message
   });
 
-  // 4. Construct Prompt
-  const minAcceptable = caseData.updated_value * (1 - caseData.max_discount_margin / 100);
+  // 4. Construct Prompt according to Collection Stage
+  const minAcceptable = caseData.updated_value * (1 - stage.effectiveMaxDiscount / 100);
+  
+  let stageGuidelinesText = "";
+  if (stage.id === 'preventiva') {
+    stageGuidelinesText = `- OBJETIVO: Lembrar do vencimento e prevenir atrasos.\n- Pergunte ao cliente se deseja receber o boleto/Pix via WhatsApp.\n- Esclareça dúvidas sobre o pagamento.\n- NÃO ofereça descontos nesta fase.`;
+  } else if (stage.id === 'amigavel') {
+    stageGuidelinesText = `- OBJETIVO: Entender o motivo do atraso e facilitar a quitação.\n- Pergunte empaticamente: "Houve algum problema com o recebimento do boleto?"\n- Pergunta obrigatória: "Deseja a 2ª via do boleto por WhatsApp?" ou "Prefere parcelar?"\n- Pergunte qual a melhor data para pagamento.\n- Desconto máximo permitido: 5%.`;
+  } else if (stage.id === 'negocial') {
+    stageGuidelinesText = `- OBJETIVO: Aplicar regras de negociação da empresa.\n- Ofereça opções de desconto à vista e parcelamento com entrada mínima.\n- Desconto máximo nesta fase: ${stage.effectiveMaxDiscount}%.`;
+  } else {
+    stageGuidelinesText = `- OBJETIVO: Transferir para cobrança especializada/supervisor.\n- A dívida tem grande atraso (${stage.diasAtraso} dias) ou requer suporte técnico.\n- Diga que o caso foi encaminhado para o supervisor responsável para análise especial e inclua a tag [HANDOFF].`;
+  }
+
   const systemPrompt = SYSTEM_PROMPT
+    .replace('{stage_name}', stage.name)
+    .replace('{dias_atraso}', stage.diasAtraso.toString())
+    .replace(/{effective_max_discount}/g, stage.effectiveMaxDiscount.toString())
+    .replace('{min_acceptable}', minAcceptable.toFixed(2))
+    .replace('{stage_guidelines}', stageGuidelinesText)
     .replace('{name}', caseData.name)
     .replace('{updated_value}', caseData.updated_value.toFixed(2))
-    .replace('{max_discount_margin}', caseData.max_discount_margin.toString())
-    .replace('{min_acceptable}', minAcceptable.toFixed(2));
+    .replace('{due_date_formatted}', new Date(caseData.due_date).toLocaleDateString('pt-BR'));
 
   let aiText = "Desculpe, ocorreu um erro de comunicação com a inteligência artificial.";
 
@@ -194,15 +227,13 @@ export async function processChat(caseId: string, message: string) {
     content: aiText
   });
 
-  // Clean up internal tags for the user
+  // Clean up internal tags for WhatsApp sending
   const cleanAiText = aiText
     .replace('[HANDOFF]', '')
     .replace('[ACORDO_FECHADO]', '')
     .trim();
 
-  // Send to real WhatsApp (if configured)
   if (caseData.phone) {
-    // Run asynchronously, don't await so we can return response quickly
     sendWhatsAppMessage(caseData.phone, cleanAiText, caseData.user_id).catch(err => {
       console.error("Error in background WhatsApp send:", err);
     });
@@ -211,12 +242,12 @@ export async function processChat(caseId: string, message: string) {
   // 6. Check for Handoff or Close
   let newStatus = caseData.status;
   if (newStatus === 'not_started') newStatus = 'in_negotiation';
-  if (aiText.includes('[HANDOFF]')) newStatus = 'needs_attention';
+  if (aiText.includes('[HANDOFF]') || stage.id === 'especializada') newStatus = 'needs_attention';
   if (aiText.includes('[ACORDO_FECHADO]')) newStatus = 'closed';
 
   if (newStatus !== caseData.status) {
     await supabase.from('cases').update({ status: newStatus }).eq('id', caseId);
   }
 
-  return { text: aiText, newStatus };
+  return { text: aiText, newStatus, stage };
 }

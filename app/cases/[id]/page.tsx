@@ -10,6 +10,7 @@ import useSWR from 'swr';
 import { Header } from '@/components/header';
 import { formatPhoneInput } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { getCollectionStage, generateCaseDossier } from '@/lib/finance';
 
 const QUICK_TEMPLATES = [
   "Olá! Tudo bem? Podemos falar sobre a sua pendência?",
@@ -201,6 +202,20 @@ export default function CaseDetailPage() {
   if (loading) return <div className="p-8 text-slate-300 bg-[#0c0d10] h-screen">Carregando...</div>;
   if (!caseData) return <div className="p-8 text-slate-300 bg-[#0c0d10] h-screen">Caso não encontrado.</div>;
 
+  const stage = getCollectionStage(caseData.due_date, caseData.max_discount_margin, caseData.status);
+
+  const handleDownloadDossier = () => {
+    const dossierText = generateCaseDossier(caseData, messages);
+    const blob = new Blob([dossierText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Dossie_${caseData.name.replace(/\s+/g, '_')}_${stage.id}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen lg:h-screen bg-[#0c0d10] text-slate-300 flex flex-col overflow-x-hidden">
       <Header />
@@ -217,6 +232,12 @@ export default function CaseDetailPage() {
           </div>
           
           <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4 sm:space-x-6 text-xs sm:text-sm pt-2 sm:pt-0 border-t sm:border-0 border-white/5">
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Estágio de Cobrança</p>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${stage.badgeBg} ${stage.badgeText} ${stage.badgeBorder}`}>
+                {stage.name}
+              </span>
+            </div>
             <div>
               <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Valor Atualizado</p>
               <p className="font-bold text-white text-xs sm:text-sm">
@@ -412,6 +433,42 @@ export default function CaseDetailPage() {
 
         {/* Lawyer Details Panel */}
         <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4 sm:gap-6 lg:overflow-y-auto lg:pr-2 lg:pb-2">
+          
+          {/* Estágio de Cobrança Card */}
+          <div className="bg-[#16181d] border border-white/5 rounded-xl p-4 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-white text-xs sm:text-sm flex items-center">
+                <Bot className="w-4 h-4 mr-2 text-purple-400 shrink-0" />
+                Estágio de Cobrança
+              </h3>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${stage.badgeBg} ${stage.badgeText} ${stage.badgeBorder} border`}>
+                {stage.id}
+              </span>
+            </div>
+            <p className="text-xs font-semibold text-white mb-1">{stage.name}</p>
+            <p className="text-[11px] text-slate-400 leading-relaxed mb-3">{stage.description}</p>
+            
+            <div className="bg-[#0e1014] p-2.5 rounded-lg border border-white/5 space-y-1.5 mb-3 text-xs">
+              <div className="flex justify-between text-slate-400">
+                <span>Dias em Atraso:</span>
+                <span className="font-mono text-white font-semibold">
+                  {stage.diasAtraso <= 0 ? 'Em dia / Preventiva' : `${stage.diasAtraso} dia(s)`}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Desc. Máx. do Estágio:</span>
+                <span className="font-mono text-emerald-400 font-semibold">{stage.effectiveMaxDiscount}%</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleDownloadDossier}
+              className="w-full bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+            >
+              <span>📄 Baixar Dossiê para Supervisão</span>
+            </button>
+          </div>
+
           <div className="bg-[#16181d] border border-white/5 rounded-xl p-4 sm:p-5 shadow-sm">
             <h3 className="font-semibold text-white mb-3 sm:mb-4 flex items-center text-xs sm:text-sm">
               <AlertTriangle className="w-4 h-4 mr-2 text-emerald-500 shrink-0" />
@@ -423,13 +480,13 @@ export default function CaseDetailPage() {
                 <span className="font-mono text-white">R$ {caseData.updated_value.toFixed(2)}</span>
               </li>
               <li className="flex justify-between border-b border-white/5 pb-2">
-                <span>Margem Máxima:</span>
-                <span className="font-mono text-emerald-400">{caseData.max_discount_margin}%</span>
+                <span>Margem do Estágio:</span>
+                <span className="font-mono text-emerald-400">{stage.effectiveMaxDiscount}%</span>
               </li>
               <li className="flex justify-between text-slate-300">
-                <span>Piso Absoluto:</span>
-                <span className="font-mono">
-                  R$ {(caseData.updated_value * (1 - caseData.max_discount_margin / 100)).toFixed(2)}
+                <span>Piso Absoluto do Estágio:</span>
+                <span className="font-mono font-bold text-white">
+                  R$ {(caseData.updated_value * (1 - stage.effectiveMaxDiscount / 100)).toFixed(2)}
                 </span>
               </li>
             </ul>
