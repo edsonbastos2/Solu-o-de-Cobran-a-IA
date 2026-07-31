@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Send, Bot, User, CheckCircle, AlertTriangle, UserCheck, Play, Pause, Zap } from 'lucide-react';
+import useSWR from 'swr';
 
 import { Header } from '@/components/header';
 
@@ -15,32 +16,51 @@ const QUICK_TEMPLATES = [
   "Ainda aguardamos o seu retorno para resolvermos a pendência amigavelmente."
 ];
 
+const fetchCaseData = async (caseId: string) => {
+  if (!supabase) throw new Error("Supabase não configurado.");
+  const [caseRes, msgRes, logsRes] = await Promise.all([
+    supabase.from('cases').select('*').eq('id', caseId).single(),
+    supabase.from('messages').select('*').eq('case_id', caseId).order('created_at', { ascending: true }),
+    supabase.from('audit_logs').select('*').eq('case_id', caseId).order('created_at', { ascending: false })
+  ]);
+  if (caseRes.error) throw caseRes.error;
+  return {
+    caseData: caseRes.data,
+    messages: msgRes.data || [],
+    auditLogs: logsRes.data || []
+  };
+};
+
 export default function CaseDetailPage() {
   const params = useParams();
   const caseId = params?.id as string;
   const router = useRouter();
 
-  const [caseData, setCaseData] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const { data, error, mutate } = useSWR(caseId ? `case-${caseId}` : null, () => fetchCaseData(caseId), {
+    revalidateOnFocus: false, // Relies on realtime events
+  });
+
+  const caseData = data?.caseData;
+  const messages: any[] = data?.messages || [];
+  const auditLogs: any[] = data?.auditLogs || [];
+  
+  const loading = !data && !error;
+
   const [agentInput, setAgentInput] = useState('');
-  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sendingAgent, setSendingAgent] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetchData();
-
-    if (supabase) {
+    if (supabase && caseId) {
       const channel = supabase
         .channel(`messages-${caseId}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'messages', filter: `case_id=eq.${caseId}` },
-          (payload: any) => {
-            fetchData();
+          () => {
+            mutate();
           }
         )
         .subscribe();
@@ -50,8 +70,8 @@ export default function CaseDetailPage() {
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'cases', filter: `id=eq.${caseId}` },
-          (payload: any) => {
-            fetchData();
+          () => {
+            mutate();
           }
         )
         .subscribe();
@@ -61,8 +81,8 @@ export default function CaseDetailPage() {
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'audit_logs', filter: `case_id=eq.${caseId}` },
-          (payload: any) => {
-            fetchData();
+          () => {
+            mutate();
           }
         )
         .subscribe();
@@ -73,31 +93,11 @@ export default function CaseDetailPage() {
         supabase.removeChannel(logsChannel);
       };
     }
-  }, [caseId]);
+  }, [caseId, mutate]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  async function fetchData() {
-    if (!supabase) return;
-    try {
-      const [caseRes, msgRes, logsRes] = await Promise.all([
-        supabase.from('cases').select('*').eq('id', caseId).single(),
-        supabase.from('messages').select('*').eq('case_id', caseId).order('created_at', { ascending: true }),
-        supabase.from('audit_logs').select('*').eq('case_id', caseId).order('created_at', { ascending: false })
-      ]);
-
-      if (caseRes.error) throw caseRes.error;
-      setCaseData(caseRes.data);
-      setMessages(msgRes.data || []);
-      setAuditLogs(logsRes.data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   const startConversation = async () => {
     setSending(true);
@@ -112,7 +112,7 @@ export default function CaseDetailPage() {
         const data = await res.json();
         throw new Error(data.error || 'Falha ao iniciar negociação');
       }
-      await fetchData();
+      await mutate();
     } catch(err: any) {
       console.error(err);
       setChatError(err.message);
@@ -132,7 +132,16 @@ export default function CaseDetailPage() {
 
     // Optimistic UI insert
     const tempMsg = { id: Date.now(), role: 'human', content: msg, created_at: new Date().toISOString() };
-    setMessages(prev => [...prev, tempMsg]);
+    mutate(
+      (currentData: any) => {
+        if (!currentData) return currentData;
+        return {
+          ...currentData,
+          messages: [...currentData.messages, tempMsg]
+        };
+      },
+      false
+    );
 
     try {
       const res = await fetch('/api/agent-message', {
@@ -145,11 +154,12 @@ export default function CaseDetailPage() {
         const data = await res.json();
         throw new Error(data.error || 'Falha ao enviar mensagem humana.');
       }
-      await fetchData();
+      await mutate();
     } catch (err: any) {
       console.error(err);
       setChatError(err.message);
-      setMessages(prev => prev.filter(m => m.id !== tempMsg.id));
+      // Revert optimistic update by refetching
+      await mutate();
     } finally {
       setSendingAgent(false);
     }
@@ -167,7 +177,7 @@ export default function CaseDetailPage() {
         const data = await res.json();
         throw new Error(data.error || 'Falha ao alterar modo.');
       }
-      await fetchData();
+      await mutate();
     } catch (err: any) {
       console.error(err);
       setChatError(err.message);

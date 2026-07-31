@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Plus, MessageCircleWarning, Phone, AlertCircle, CheckCircle2, Clock, CalendarClock, ArrowDownWideNarrow, ArrowUpNarrowWide, Filter } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { differenceInDays, parseISO } from 'date-fns';
+import useSWR from 'swr';
 
 type Case = {
   id: string;
@@ -25,40 +26,27 @@ const columns = [
   { id: 'closed', title: 'Acordo Fechado', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10', hex: '#34d399' },
 ];
 
+const fetchCases = async () => {
+  if (!supabase) throw new Error("Supabase não configurado. Adicione as variáveis de ambiente.");
+  const { data, error } = await supabase
+    .from('cases')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+};
+
 export default function KanbanBoard() {
-  const [cases, setCases] = useState<Case[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: cases, error, mutate } = useSWR<Case[]>('cases', fetchCases, {
+    revalidateOnFocus: false, // Avoid excessive revalidation, realtime handles updates
+  });
+  const loading = !cases && !error;
   
   // Filters
   const [sortDue, setSortDue] = useState<'asc' | 'desc' | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
 
-  async function fetchCases() {
-    if (!supabase) {
-      setError("Supabase não configurado. Adicione as variáveis de ambiente.");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('cases')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setCases(data || []);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    fetchCases();
-
     // Set up realtime subscription if supabase is configured
     if (supabase) {
       const channel = supabase
@@ -66,8 +54,8 @@ export default function KanbanBoard() {
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'cases' },
-          (payload: any) => {
-            fetchCases();
+          () => {
+            mutate();
           }
         )
         .subscribe();
@@ -76,14 +64,14 @@ export default function KanbanBoard() {
         supabase.removeChannel(channel);
       };
     }
-  }, []);
+  }, [mutate]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
   const chartData = columns.map(col => {
-    const count = cases.filter(c => c.status === col.id).length;
+    const count = (cases || []).filter(c => c.status === col.id).length;
     return {
       name: col.title,
       value: count,
@@ -111,7 +99,7 @@ export default function KanbanBoard() {
     else setSortDue(null);
   };
 
-  const filteredCases = [...cases].sort((a, b) => {
+  const filteredCases = [...(cases || [])].sort((a, b) => {
     if (!sortDue) return 0;
     if (!a.due_date) return sortDue === 'asc' ? 1 : -1;
     if (!b.due_date) return sortDue === 'asc' ? -1 : 1;
