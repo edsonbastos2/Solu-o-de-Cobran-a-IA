@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "CobrançaIA",
+  "description": "Plataforma de gestão de cobranças, cadastro de devedores com importação por CSV/PDF e negociação automatizada por IA.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
