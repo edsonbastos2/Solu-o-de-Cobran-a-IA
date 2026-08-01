@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     contents.push(`You are an expert lawyer and data extraction assistant. Extract the following information from the contract provided above. If a field is not found, leave it empty or null.`);
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash",
       contents: contents,
       config: {
         responseMimeType: "application/json",

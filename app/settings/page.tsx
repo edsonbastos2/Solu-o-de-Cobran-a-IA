@@ -293,7 +293,7 @@ export default function SettingsPage() {
                             {aiProvider === 'gemini' && (
                               <>
                                 <option value="gemini-3.5-flash">Gemini 3.5 Flash (Rápido/Recomendado)</option>
-                                <option value="gemini-1.5-pro">Gemini 1.5 Pro (Mais inteligente)</option>
+                                <option value="gemini-3.1-pro">Gemini 3.1 Pro (Mais inteligente)</option>
                               </>
                             )}
                             {aiProvider === 'openai' && (
