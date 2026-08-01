@@ -1,560 +1,607 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { use, useEffect, useState, useRef, useMemo } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Send, Bot, User, CheckCircle, AlertTriangle, UserCheck, Play, Pause, Zap } from 'lucide-react';
 import useSWR from 'swr';
-
+import { supabase } from '@/lib/supabase';
 import { Header } from '@/components/header';
+
+const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { 
+  ArrowLeft, 
+  Bot, 
+  User as UserIcon, 
+  Send, 
+  Radio, 
+  CheckCircle, 
+  AlertCircle, 
+  Clock, 
+  FileText, 
+  MessageSquare, 
+  ShieldAlert, 
+  Play, 
+  RefreshCw, 
+  Download,
+  Phone,
+  Mail,
+  MapPin,
+  Sparkles,
+  Layers
+} from 'lucide-react';
+import { Case, Message } from '@/lib/types';
 import { formatPhoneInput } from '@/lib/utils';
-import { useAuth } from '@/hooks/useAuth';
-import { getCollectionStage, generateCaseDossier } from '@/lib/finance';
+import { generateCaseDossier, CollectionStageInfo } from '@/lib/finance';
 
-const QUICK_TEMPLATES = [
-  "Olá! Tudo bem? Podemos falar sobre a sua pendência?",
-  "Temos uma proposta de desconto especial para você hoje. Vamos negociar?",
-  "Conseguimos um parcelamento flexível para quitar sua dívida. O que acha?",
-  "Ainda aguardamos o seu retorno para resolvermos a pendência amigavelmente."
-];
+export default function CaseDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = use(params);
+  const caseId = unwrappedParams.id;
 
-const fetchCaseData = async (keyArgs: any[]) => {
-  const [, caseId, userId, isSuperAdmin] = keyArgs;
-  if (!supabase) throw new Error("Supabase não configurado.");
-  
-  let caseQuery = supabase.from('cases').select('*').eq('id', caseId);
-  if (!isSuperAdmin && userId) {
-    caseQuery = caseQuery.eq('user_id', userId);
-  }
-  
-  const [caseRes, msgRes, logsRes] = await Promise.all([
-    caseQuery.single(),
-    supabase.from('messages').select('*').eq('case_id', caseId).order('created_at', { ascending: true }),
-    supabase.from('audit_logs').select('*').eq('case_id', caseId).order('created_at', { ascending: false })
-  ]);
-  if (caseRes.error) throw caseRes.error;
-  return {
-    caseData: caseRes.data,
-    messages: msgRes.data || [],
-    auditLogs: logsRes.data || []
-  };
-};
+  const { data, isLoading: loading, mutate } = useSWR(caseId ? `/api/cases/${caseId}` : null, fetcher, {
+    refreshInterval: 4000
+  });
 
-export default function CaseDetailPage() {
-  const params = useParams();
-  const caseId = params?.id as string;
-  const router = useRouter();
-  const { user, profile, loading: authLoading } = useAuth();
+  const caseData: Case | null = data?.case || null;
+  const messages: Message[] = useMemo(() => data?.messages || [], [data?.messages]);
+  const stage: CollectionStageInfo | null = data?.stage || null;
 
-  const { data, error, mutate } = useSWR(
-    (caseId && user) ? ['case', caseId, user.id, profile?.is_super_admin] : null, 
-    fetchCaseData, 
-    {
-      revalidateOnFocus: false, // Relies on realtime events
-    }
-  );
+  // Human intervention input
+  const [humanMessage, setHumanMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isStartingIA, setIsStartingIA] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  const caseData = data?.caseData;
-  const messages: any[] = data?.messages || [];
-  const auditLogs: any[] = data?.auditLogs || [];
-  
-  const loading = authLoading || (!!user && !data && !error);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
-  const [agentInput, setAgentInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sendingAgent, setSendingAgent] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
+  // Real-time Supabase channels for live chat and status updates
   useEffect(() => {
-    if (supabase && caseId) {
-      const channel = supabase
-        .channel(`messages-${caseId}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'messages', filter: `case_id=eq.${caseId}` },
-          () => {
-            mutate();
-          }
-        )
-        .subscribe();
+    if (!supabase || !caseId) return;
 
-      const caseChannel = supabase
-        .channel(`case-${caseId}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'cases', filter: `id=eq.${caseId}` },
-          () => {
-            mutate();
-          }
-        )
-        .subscribe();
+    // Listen to message inserts for this case
+    const messagesChannel = supabase
+      .channel(`realtime-messages-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `case_id=eq.${caseId}`
+        },
+        () => {
+          mutate();
+        }
+      )
+      .subscribe();
 
-      const logsChannel = supabase
-        .channel(`logs-${caseId}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'audit_logs', filter: `case_id=eq.${caseId}` },
-          () => {
-            mutate();
-          }
-        )
-        .subscribe();
+    // Listen to case status/data changes
+    const caseChannel = supabase
+      .channel(`realtime-case-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cases',
+          filter: `id=eq.${caseId}`
+        },
+        () => {
+          mutate();
+        }
+      )
+      .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-        supabase.removeChannel(caseChannel);
-        supabase.removeChannel(logsChannel);
-      };
-    }
+    return () => {
+      supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(caseChannel);
+    };
   }, [caseId, mutate]);
 
+  // Auto-scroll chat to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  const startConversation = async () => {
-    setSending(true);
-    setChatError(null);
+  const handleSendHumanMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!humanMessage.trim() || isSending) return;
+
+    setIsSending(true);
+    const msgText = humanMessage.trim();
+    setHumanMessage('');
+
+    try {
+      const res = await fetch('/api/agent-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseId,
+          message: msgText
+        })
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        alert('Erro ao enviar mensagem: ' + (resData.error || 'Erro desconhecido'));
+      } else {
+        mutate();
+      }
+    } catch (err: any) {
+      alert('Erro na conexão: ' + err.message);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleStartNegotiation = async () => {
+    setIsStartingIA(true);
     try {
       const res = await fetch('/api/start-negotiation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ caseId })
       });
+      const resData = await res.json();
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Falha ao iniciar negociação');
+        alert(resData.error || 'Erro ao iniciar abordagem por IA');
+      } else {
+        mutate();
       }
-      await mutate();
-    } catch(err: any) {
-      console.error(err);
-      setChatError(err.message);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const sendAgentMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!agentInput.trim() || sendingAgent) return;
-
-    const msg = agentInput.trim();
-    setAgentInput('');
-    setSendingAgent(true);
-    setChatError(null);
-
-    // Optimistic UI insert
-    const tempMsg = { id: Date.now(), role: 'human', content: msg, created_at: new Date().toISOString() };
-    mutate(
-      (currentData: any) => {
-        if (!currentData) return currentData;
-        return {
-          ...currentData,
-          messages: [...currentData.messages, tempMsg]
-        };
-      },
-      false
-    );
-
-    try {
-      const res = await fetch('/api/agent-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caseId, message: msg })
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Falha ao enviar mensagem humana.');
-      }
-      await mutate();
     } catch (err: any) {
-      console.error(err);
-      setChatError(err.message);
-      // Revert optimistic update by refetching
-      await mutate();
+      alert('Erro: ' + err.message);
     } finally {
-      setSendingAgent(false);
+      setIsStartingIA(false);
     }
   };
 
-  const toggleAiStatus = async (newStatus: 'in_negotiation' | 'needs_attention') => {
-    setChatError(null);
+  const handleUpdateStatus = async (newStatus: string) => {
+    setIsUpdatingStatus(true);
     try {
-      const res = await fetch('/api/case-status', {
-        method: 'POST',
+      const res = await fetch(`/api/cases/${caseId}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caseId, status: newStatus })
+        body: JSON.stringify({ status: newStatus })
       });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Falha ao alterar modo.');
+        const resData = await res.json();
+        alert(resData.error || 'Erro ao atualizar status');
+      } else {
+        mutate();
       }
-      await mutate();
     } catch (err: any) {
-      console.error(err);
-      setChatError(err.message);
+      alert('Erro: ' + err.message);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
-
-  if (loading) return <div className="p-8 text-slate-300 bg-[#0c0d10] h-screen">Carregando...</div>;
-  if (!caseData) return <div className="p-8 text-slate-300 bg-[#0c0d10] h-screen">Caso não encontrado.</div>;
-
-  const stage = getCollectionStage(caseData.due_date, caseData.max_discount_margin, caseData.status);
 
   const handleDownloadDossier = () => {
-    const dossierText = generateCaseDossier(caseData, messages);
-    const blob = new Blob([dossierText], { type: 'text/plain;charset=utf-8' });
+    if (!caseData) return;
+    const textDossier = generateCaseDossier(caseData, messages);
+    const blob = new Blob([textDossier], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Dossie_${caseData.name.replace(/\s+/g, '_')}_${stage.id}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dossie_cobranca_${caseData.name.replace(/\s+/g, '_')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
+  const getStatusBadge = (status?: string) => {
+    switch (status) {
+      case 'in_negotiation':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+            </span>
+            Em Negociação (IA)
+          </span>
+        );
+      case 'needs_attention':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-600"></span>
+            </span>
+            Requer Atenção / Atendimento Humano
+          </span>
+        );
+      case 'closed':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+            Acordo Fechado
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-200 text-slate-700">
+            <Clock className="w-3.5 h-3.5" />
+            Não Iniciado
+          </span>
+        );
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+        <Header />
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-12 flex flex-col items-center justify-center">
+          <RefreshCw className="w-8 h-8 text-emerald-600 animate-spin mb-3" />
+          <p className="text-slate-500 font-medium">Carregando caso em tempo real...</p>
+        </main>
+      </div>
+    );
+  }
+
+  if (!caseData) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+        <Header />
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-12">
+          <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+            <h2 className="text-xl font-bold text-slate-900">Caso não encontrado</h2>
+            <p className="text-slate-500 text-sm mt-1 mb-6">Este caso pode ter sido removido ou você não tem acesso.</p>
+            <Link
+              href="/cases"
+              className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors"
+            >
+              Voltar para a lista de casos
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const originalVal = Number(caseData.original_value) || 0;
+  const updatedVal = Number(caseData.updated_value) || originalVal;
+  const formattedOriginal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(originalVal);
+  const formattedUpdated = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(updatedVal);
+
   return (
-    <div className="min-h-screen lg:h-screen bg-[#0c0d10] text-slate-300 flex flex-col overflow-x-hidden">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <Header />
-      <header className="bg-[#111318] border-b border-white/5 px-4 sm:px-6 py-3 sm:py-4 shrink-0">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center">
-            <Link href="/" className="text-slate-500 hover:text-white mr-3 transition-colors shrink-0">
+
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Navigation & Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/cases"
+              className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors shadow-sm"
+              title="Voltar para Casos"
+            >
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div>
-              <h1 className="text-lg sm:text-xl font-bold text-white leading-tight">{caseData.name}</h1>
-              <p className="text-xs sm:text-sm text-slate-500 font-mono">{formatPhoneInput(caseData.phone)}</p>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  <Radio className="w-3 h-3 animate-pulse text-emerald-600" />
+                  Ao Vivo
+                </span>
+                {getStatusBadge(caseData.status)}
+              </div>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight mt-1">
+                {caseData.name}
+              </h1>
             </div>
           </div>
-          
-          <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4 sm:space-x-6 text-xs sm:text-sm pt-2 sm:pt-0 border-t sm:border-0 border-white/5">
-            <div>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Estágio de Cobrança</p>
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${stage.badgeBg} ${stage.badgeText} ${stage.badgeBorder}`}>
-                {stage.name}
-              </span>
-            </div>
-            <div>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Valor Atualizado</p>
-              <p className="font-bold text-white text-xs sm:text-sm">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseData.updated_value)}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Status</p>
-              <span className={`inline-flex items-center px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold
-                ${caseData.status === 'not_started' ? 'bg-white/10 text-slate-300' :
-                  caseData.status === 'in_negotiation' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                  caseData.status === 'needs_attention' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                  'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                }`}>
-                {caseData.status === 'not_started' && 'Não Iniciado'}
-                {caseData.status === 'in_negotiation' && 'Em Negociação (IA)'}
-                {caseData.status === 'needs_attention' && 'Atendimento Humano'}
-                {caseData.status === 'closed' && 'Acordo Fechado'}
-              </span>
-            </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadDossier}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+            >
+              <Download className="w-4 h-4 text-slate-500" />
+              Baixar Dossiê
+            </button>
+
+            {caseData.status === 'not_started' && (
+              <button
+                onClick={handleStartNegotiation}
+                disabled={isStartingIA}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-emerald-600/20 transition-all"
+              >
+                {isStartingIA ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4 fill-white" />
+                )}
+                Iniciar Negociação IA
+              </button>
+            )}
           </div>
         </div>
-      </header>
 
-      <main className="flex-1 overflow-y-auto lg:overflow-hidden max-w-5xl w-full mx-auto flex flex-col lg:flex-row p-3 sm:p-6 gap-4 sm:gap-6">
-        
-        {/* Chat History & Intervention Panel */}
-        <div className="flex-1 bg-[#16181d] border border-white/5 rounded-xl shadow-sm flex flex-col overflow-hidden min-h-[500px] lg:min-h-0">
-          <div className="bg-[#111318] border-b border-white/5 p-3 sm:p-4 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
-            <div className="flex items-center font-semibold text-xs sm:text-sm">
-              <div className="w-8 h-8 bg-emerald-500/10 rounded mr-2.5 sm:mr-3 flex items-center justify-center shrink-0">
-                <Bot className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
+        {/* AI Collection Stage Card */}
+        {stage && (
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-5 rounded-2xl shadow-md border border-slate-700 mb-6 relative overflow-hidden">
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl shrink-0 mt-0.5">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                      Estágio Atual: {stage.name}
+                    </span>
+                    <span className="text-xs text-slate-300">
+                      • {stage.diasAtraso > 0 ? `${stage.diasAtraso} dias de atraso` : 'Em dia'}
+                    </span>
+                  </div>
+                  <p className="text-slate-300 text-xs mt-1.5 leading-relaxed max-w-3xl">
+                    {stage.description}
+                  </p>
+                </div>
               </div>
-              <div>
-                <div>Histórico do WhatsApp</div>
-                <div className="text-[10px] sm:text-[11px] text-slate-400 font-normal">
-                  {caseData.status === 'needs_attention' ? (
-                    <span className="text-amber-400 flex items-center gap-1 mt-0.5">
-                      <UserCheck className="w-3 h-3 shrink-0" /> Modo Atendimento Humano (IA Pausada)
-                    </span>
-                  ) : caseData.status === 'in_negotiation' ? (
-                    <span className="text-blue-400 flex items-center gap-1 mt-0.5">
-                      <Bot className="w-3 h-3 shrink-0" /> IA Ativa em Modo Automático
-                    </span>
-                  ) : (
-                    <span>Aguardando início</span>
+
+              <div className="shrink-0 bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-right">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
+                  Desconto Máximo Efetivo
+                </span>
+                <span className="text-xl font-extrabold text-emerald-400">
+                  {stage.effectiveMaxDiscount}%
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Chat Panel */}
+          <div className="lg:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[680px]">
+            {/* Chat Sub-Header */}
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-emerald-500 rounded-full animate-ping" />
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
+                    WhatsApp Feed - Sincronizado ao vivo
+                  </span>
+                  <span className="text-xs text-emerald-400 font-medium">
+                    {formatPhoneInput(caseData.phone)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-400">Status do Caso:</span>
+                <select
+                  value={caseData.status}
+                  disabled={isUpdatingStatus}
+                  onChange={(e) => handleUpdateStatus(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 text-white text-xs font-semibold rounded-lg px-2 py-1 focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="not_started">Não Iniciado</option>
+                  <option value="in_negotiation">Em Negociação</option>
+                  <option value="needs_attention">Requer Atenção</option>
+                  <option value="closed">Acordo Fechado</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Messages Feed */}
+            <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-slate-100/60">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
+                  <MessageSquare className="w-12 h-12 text-slate-300 mb-2" />
+                  <p className="font-semibold text-slate-600">Nenhuma mensagem registrada ainda</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                    Inicie a abordagem automatizada via IA ou envie uma mensagem direta de intervenção humana abaixo.
+                  </p>
+                  {caseData.status === 'not_started' && (
+                    <button
+                      onClick={handleStartNegotiation}
+                      disabled={isStartingIA}
+                      className="mt-4 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-2"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-white" />
+                      Iniciar Negociação por IA
+                    </button>
                   )}
+                </div>
+              ) : (
+                messages.map((m) => {
+                  const isUser = m.role === 'user';
+                  const isAI = m.role === 'ai';
+                  const isHuman = m.role === 'human';
+                  const isSystem = m.role === 'system';
+
+                  if (isSystem) {
+                    return (
+                      <div key={m.id} className="flex justify-center my-2">
+                        <span className="bg-slate-200 text-slate-600 text-[11px] font-medium px-3 py-1 rounded-full border border-slate-300/60">
+                          {m.content}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={m.id}
+                      className={`flex flex-col ${isUser ? 'items-start' : 'items-end'}`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                        {isUser && (
+                          <>
+                            <UserIcon className="w-3 h-3 text-slate-500" />
+                            <span>{caseData.name} (Devedor)</span>
+                          </>
+                        )}
+                        {isAI && (
+                          <>
+                            <Bot className="w-3 h-3 text-emerald-600" />
+                            <span className="text-emerald-700 font-bold">Agente Cobrança IA</span>
+                          </>
+                        )}
+                        {isHuman && (
+                          <>
+                            <ShieldAlert className="w-3 h-3 text-blue-600" />
+                            <span className="text-blue-700 font-bold">Atendente Humano</span>
+                          </>
+                        )}
+                        <span>•</span>
+                        <span>{new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+
+                      <div
+                        className={`max-w-[82%] px-4 py-3 rounded-2xl text-sm shadow-sm leading-relaxed ${
+                          isUser
+                            ? 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
+                            : isAI
+                            ? 'bg-emerald-600 text-white rounded-tr-none shadow-emerald-600/10'
+                            : 'bg-blue-600 text-white rounded-tr-none shadow-blue-600/10'
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap">{m.content}</p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            {/* Human Intervention Input Bar */}
+            <form onSubmit={handleSendHumanMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+              <input
+                type="text"
+                placeholder="Enviar mensagem via WhatsApp (Intervenção Humana)..."
+                value={humanMessage}
+                onChange={(e) => setHumanMessage(e.target.value)}
+                className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white"
+              />
+              <button
+                type="submit"
+                disabled={isSending || !humanMessage.trim()}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2 shrink-0"
+              >
+                {isSending ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                Enviar (Humano)
+              </button>
+            </form>
+          </div>
+
+          {/* Sidebar Info & Controls */}
+          <div className="space-y-6">
+            {/* Financial Details */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-emerald-600" />
+                Resumo Financeiro
+              </h3>
+
+              <div className="space-y-3 pt-1">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
+                  <span className="text-slate-500">Valor Original:</span>
+                  <span className="font-semibold text-slate-900">{formattedOriginal}</span>
+                </div>
+
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
+                  <span className="text-slate-500">Data de Vencimento:</span>
+                  <span className="font-semibold text-slate-900">
+                    {new Date(caseData.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
+                  <span className="text-slate-500">Valor Atualizado com Juros:</span>
+                  <span className="font-bold text-emerald-600 text-base">{formattedUpdated}</span>
+                </div>
+
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-500">Margem Max. Desconto:</span>
+                  <span className="font-semibold text-amber-600">{caseData.max_discount_margin}%</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-              {caseData.status === 'not_started' && (
-                <button 
-                  onClick={startConversation}
-                  disabled={sending}
-                  className="px-3 py-1.5 bg-emerald-500 text-black font-semibold rounded text-xs hover:bg-emerald-400 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current shrink-0" />
-                  <span>{sending ? 'Iniciando...' : 'Iniciar Abordagem da IA'}</span>
-                </button>
-              )}
+            {/* Debtor Info */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <UserIcon className="w-4 h-4 text-emerald-600" />
+                Dados do Devedor
+              </h3>
 
-              {caseData.status === 'in_negotiation' && (
-                <button 
-                  onClick={() => toggleAiStatus('needs_attention')}
-                  className="px-3 py-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-xs font-semibold hover:bg-amber-500/30 transition-colors flex items-center gap-1.5"
-                  title="Pausar IA para um atendente humano intervir"
-                >
-                  <Pause className="w-3.5 h-3.5 shrink-0" />
-                  <span>Intervir (Pausar IA)</span>
-                </button>
-              )}
+              <div className="space-y-3 text-sm">
+                <div className="flex items-start gap-2.5">
+                  <UserIcon className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                  <div>
+                    <span className="text-xs text-slate-400 block">Nome Completo</span>
+                    <span className="font-semibold text-slate-900">{caseData.name}</span>
+                  </div>
+                </div>
 
-              {caseData.status === 'needs_attention' && (
-                <button 
-                  onClick={() => toggleAiStatus('in_negotiation')}
-                  className="px-3 py-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded text-xs font-semibold hover:bg-blue-500/30 transition-colors flex items-center gap-1.5"
-                  title="Reativar IA para responder automaticamente ao devedor"
-                >
-                  <Bot className="w-3.5 h-3.5 shrink-0" />
-                  <span>Reativar IA</span>
-                </button>
-              )}
-            </div>
-          </div>
+                <div className="flex items-start gap-2.5">
+                  <Phone className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                  <div>
+                    <span className="text-xs text-slate-400 block">WhatsApp / Telefone</span>
+                    <span className="font-semibold text-slate-900">{formatPhoneInput(caseData.phone)}</span>
+                  </div>
+                </div>
 
-          {/* Messages list */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 bg-[#0e1014]">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 p-6 text-center">
-                <Bot className="w-10 h-10 sm:w-12 sm:h-12 mb-3 sm:mb-4 opacity-20" />
-                <p className="mb-4 sm:mb-6 text-xs sm:text-sm">Nenhuma mensagem trocada ainda com o devedor.</p>
-                {caseData.status === 'not_started' && (
-                  <button 
-                    onClick={startConversation}
-                    disabled={sending}
-                    className="px-4 py-2 bg-emerald-500 text-black font-semibold rounded-md text-xs sm:text-sm hover:bg-emerald-400 transition-colors disabled:opacity-50"
-                  >
-                    Iniciar Abordagem da IA via WhatsApp
-                  </button>
-                )}
-              </div>
-            ) : (
-              messages.map((msg, i) => {
-                const isUser = msg.role === 'user';
-                const isHumanAgent = msg.role === 'human';
-                const isAi = msg.role === 'ai';
-
-                return (
-                  <div key={msg.id || i} className={`flex ${isUser ? 'justify-start' : 'justify-end'}`}>
-                    <div className={`max-w-[88%] sm:max-w-[80%] rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-sm ${
-                      isUser
-                        ? 'bg-[#1c1e24] text-slate-200 border border-white/10 rounded-tl-none'
-                        : isHumanAgent
-                        ? 'bg-blue-950/60 text-blue-100 border border-blue-500/40 rounded-tr-none'
-                        : 'bg-emerald-950/60 text-emerald-100 border border-emerald-500/40 rounded-tr-none'
-                    }`}>
-                      {isAi && (
-                        <div className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold mb-1 flex items-center gap-1">
-                          <Bot className="w-3 h-3 shrink-0" /> IA Cobrança
-                        </div>
-                      )}
-                      {isHumanAgent && (
-                        <div className="text-[10px] uppercase tracking-wider text-blue-400 font-bold mb-1 flex items-center gap-1">
-                          <User className="w-3 h-3 shrink-0" /> Atendente Humano (Você)
-                        </div>
-                      )}
-                      {isUser && (
-                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1 flex items-center gap-1">
-                          <User className="w-3 h-3 text-slate-400 shrink-0" /> Devedor ({caseData.name})
-                        </div>
-                      )}
-
-                      <div className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</div>
-
-                      <div className={`text-[10px] mt-1 text-right font-mono opacity-60`}>
-                        {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      </div>
+                {caseData.debtor_document && (
+                  <div className="flex items-start gap-2.5">
+                    <FileText className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="text-xs text-slate-400 block">CPF / CNPJ</span>
+                      <span className="font-semibold text-slate-900 font-mono text-xs">{caseData.debtor_document}</span>
                     </div>
                   </div>
-                );
-              })
-            )}
-            {chatError && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs p-3 rounded-lg flex items-start mt-2">
-                <AlertTriangle className="w-4 h-4 mr-2 shrink-0 mt-0.5" />
-                <p>{chatError}</p>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+                )}
 
-          {/* Quick Templates */}
-          <div className="bg-[#111318] border-t border-white/5 px-2.5 sm:px-3 pt-3 flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium px-1">
-              <Zap className="w-3.5 h-3.5 text-amber-400" /> Templates Rápidos
-            </div>
-            <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-hide">
-              {QUICK_TEMPLATES.map((template, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setAgentInput(template)}
-                  className="whitespace-nowrap px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-slate-300 transition-colors shrink-0"
-                >
-                  {template.length > 35 ? template.substring(0, 35) + '...' : template}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Human Intervention Input Bar */}
-          <form onSubmit={sendAgentMessage} className="p-2.5 sm:p-3 bg-[#111318] flex gap-2 shrink-0">
-            <input 
-              type="text" 
-              value={agentInput}
-              onChange={e => setAgentInput(e.target.value)}
-              placeholder="Enviar mensagem ao devedor via WhatsApp..."
-              className="flex-1 rounded-lg border border-white/10 bg-[#0e1014] text-white px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 placeholder-slate-500"
-              disabled={sendingAgent}
-            />
-            <button 
-              type="submit" 
-              disabled={sendingAgent || !agentInput.trim()}
-              className="bg-blue-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg hover:bg-blue-500 disabled:opacity-50 transition-colors flex items-center gap-1.5 text-xs sm:text-sm font-semibold shrink-0"
-            >
-              <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">{sendingAgent ? 'Enviando...' : 'Enviar'}</span>
-            </button>
-          </form>
-        </div>
-
-        {/* Lawyer Details Panel */}
-        <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4 sm:gap-6 lg:overflow-y-auto lg:pr-2 lg:pb-2">
-          
-          {/* Estágio de Cobrança Card */}
-          <div className="bg-[#16181d] border border-white/5 rounded-xl p-4 sm:p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold text-white text-xs sm:text-sm flex items-center">
-                <Bot className="w-4 h-4 mr-2 text-purple-400 shrink-0" />
-                Estágio de Cobrança
-              </h3>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${stage.badgeBg} ${stage.badgeText} ${stage.badgeBorder} border`}>
-                {stage.id}
-              </span>
-            </div>
-            <p className="text-xs font-semibold text-white mb-1">{stage.name}</p>
-            <p className="text-[11px] text-slate-400 leading-relaxed mb-3">{stage.description}</p>
-            
-            <div className="bg-[#0e1014] p-2.5 rounded-lg border border-white/5 space-y-1.5 mb-3 text-xs">
-              <div className="flex justify-between text-slate-400">
-                <span>Dias em Atraso:</span>
-                <span className="font-mono text-white font-semibold">
-                  {stage.diasAtraso <= 0 ? 'Em dia / Preventiva' : `${stage.diasAtraso} dia(s)`}
-                </span>
-              </div>
-              <div className="flex justify-between text-slate-400">
-                <span>Desc. Máx. do Estágio:</span>
-                <span className="font-mono text-emerald-400 font-semibold">{stage.effectiveMaxDiscount}%</span>
-              </div>
-            </div>
-
-            <button
-              onClick={handleDownloadDossier}
-              className="w-full bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
-            >
-              <span>📄 Baixar Dossiê para Supervisão</span>
-            </button>
-          </div>
-
-          <div className="bg-[#16181d] border border-white/5 rounded-xl p-4 sm:p-5 shadow-sm">
-            <h3 className="font-semibold text-white mb-3 sm:mb-4 flex items-center text-xs sm:text-sm">
-              <AlertTriangle className="w-4 h-4 mr-2 text-emerald-500 shrink-0" />
-              Regras da IA
-            </h3>
-            <ul className="text-xs sm:text-sm text-slate-400 space-y-2.5 sm:space-y-3">
-              <li className="flex justify-between border-b border-white/5 pb-2">
-                <span>Valor Atualizado:</span>
-                <span className="font-mono text-white">R$ {caseData.updated_value.toFixed(2)}</span>
-              </li>
-              <li className="flex justify-between border-b border-white/5 pb-2">
-                <span>Margem do Estágio:</span>
-                <span className="font-mono text-emerald-400">{stage.effectiveMaxDiscount}%</span>
-              </li>
-              <li className="flex justify-between text-slate-300">
-                <span>Piso Absoluto do Estágio:</span>
-                <span className="font-mono font-bold text-white">
-                  R$ {(caseData.updated_value * (1 - stage.effectiveMaxDiscount / 100)).toFixed(2)}
-                </span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="bg-[#16181d] border border-white/5 rounded-xl p-4 sm:p-5 shadow-sm">
-            <h3 className="font-semibold text-white mb-2 flex items-center text-xs sm:text-sm">
-              <UserCheck className="w-4 h-4 mr-2 text-blue-400 shrink-0" />
-              Controle de Atendimento
-            </h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-4">
-              Você pode enviar mensagens diretamente a qualquer momento pela caixa de chat. Ao enviar uma mensagem humana, a IA é pausada para dar controle total ao atendente.
-            </p>
-            {caseData.status === 'needs_attention' ? (
-              <button 
-                onClick={() => toggleAiStatus('in_negotiation')}
-                className="w-full bg-blue-500/20 text-blue-400 border border-blue-500/30 py-2 rounded-md text-xs font-semibold hover:bg-blue-500/30 transition-colors flex items-center justify-center gap-1.5"
-              >
-                <Bot className="w-3.5 h-3.5 shrink-0" /> Devolver para IA
-              </button>
-            ) : (
-              <button 
-                onClick={() => toggleAiStatus('needs_attention')}
-                className="w-full bg-amber-500/20 text-amber-400 border border-amber-500/30 py-2 rounded-md text-xs font-semibold hover:bg-amber-500/30 transition-colors flex items-center justify-center gap-1.5"
-              >
-                <Pause className="w-3.5 h-3.5 shrink-0" /> Assumir Conversa Humana
-              </button>
-            )}
-          </div>
-
-          {caseData.status === 'closed' && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 sm:p-5 shadow-sm">
-              <h3 className="font-semibold text-emerald-400 mb-2 flex items-center text-xs sm:text-sm uppercase tracking-wider">
-                <CheckCircle className="w-4 h-4 mr-2 shrink-0" /> Acordo Fechado
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-300 mb-4">
-                A negociação foi concluída com sucesso.
-              </p>
-              <button className="w-full bg-emerald-500 text-black font-semibold py-2 rounded-md text-xs sm:text-sm hover:bg-emerald-400 transition-colors">
-                Gerar Link Pix
-              </button>
-            </div>
-          )}
-
-          <div className="bg-[#16181d] border border-white/5 rounded-xl p-4 sm:p-5 shadow-sm flex flex-col max-h-[300px]">
-            <h3 className="font-semibold text-white mb-3 flex items-center text-xs sm:text-sm shrink-0">
-              <AlertTriangle className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
-              Registro de Atividades
-            </h3>
-            <div className="overflow-y-auto space-y-3 pr-1 text-xs text-slate-400">
-              {auditLogs.length === 0 ? (
-                <p className="text-slate-500 text-center py-4">Nenhuma atividade registrada.</p>
-              ) : (
-                auditLogs.map((log) => (
-                  <div key={log.id} className="border-l-2 border-white/10 pl-3 py-1">
-                    <p className="font-semibold text-white mb-1">
-                      {log.action === 'CASE_CREATED' ? 'Caso Criado' :
-                       log.action === 'STATUS_CHANGE' ? 'Status Alterado' :
-                       log.action === 'HUMAN_INTERVENTION' ? 'Intervenção Humana' : log.action}
-                    </p>
-                    <p className="mb-1 leading-relaxed">{log.details}</p>
-                    <p className="text-[10px] text-slate-500 font-mono">
-                      {new Date(log.created_at).toLocaleString('pt-BR')}
-                    </p>
+                {caseData.debtor_email && (
+                  <div className="flex items-start gap-2.5">
+                    <Mail className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="text-xs text-slate-400 block">E-mail</span>
+                      <span className="font-semibold text-slate-900">{caseData.debtor_email}</span>
+                    </div>
                   </div>
-                ))
-              )}
+                )}
+
+                {caseData.debtor_address && (
+                  <div className="flex items-start gap-2.5">
+                    <MapPin className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="text-xs text-slate-400 block">Endereço</span>
+                      <span className="font-semibold text-slate-900 text-xs">{caseData.debtor_address}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Objectives & Guidelines Card */}
+            {stage && stage.objectives && stage.objectives.length > 0 && (
+              <div className="bg-slate-900 text-white rounded-2xl p-5 shadow-sm space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                  <Layers className="w-4 h-4" />
+                  Objetivos da Abordagem
+                </h3>
+                <ul className="space-y-2 text-xs text-slate-300">
+                  {stage.objectives.map((obj, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-emerald-400 font-bold">•</span>
+                      <span>{obj}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </main>

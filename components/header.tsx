@@ -1,6 +1,7 @@
 'use client';
 
-import { Bot, LogOut, Shield, Users, LayoutDashboard, Cpu } from 'lucide-react';
+import { useState } from 'react';
+import { Bot, LogOut, Shield, Users, LayoutDashboard, Cpu, Menu, X, Settings, FolderKanban } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -9,8 +10,11 @@ import Link from 'next/link';
 export function Header() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isSuperAdmin = user?.email === 'bastose132@gmail.com';
+
+  const userName = profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Painel do Advogado');
 
   const handleLogout = async () => {
     if (supabase) {
@@ -19,90 +23,171 @@ export function Header() {
     }
   };
 
-  const getInitials = (email?: string) => {
+  const getInitials = (name?: string, email?: string) => {
+    if (name) {
+      const parts = name.trim().split(' ');
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      return name.substring(0, 2).toUpperCase();
+    }
     if (!email) return 'AD';
     return email.substring(0, 2).toUpperCase();
   };
 
+  const navLinks = [
+    { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+    { href: '/cases', label: 'Casos (Ao Vivo)', icon: FolderKanban, exact: false },
+    { href: '/contracts', label: 'Contratos', icon: Bot, exact: false },
+    { href: '/clients', label: 'Clientes', icon: Users, exact: false },
+    { href: '/agents', label: 'Agentes IA', icon: Cpu, exact: false },
+    { href: '/policies', label: 'Políticas', icon: Shield, exact: false },
+  ];
+
+  const isActive = (href: string, exact: boolean) => {
+    if (exact) return pathname === href;
+    return pathname?.startsWith(href);
+  };
+
   return (
-    <header className="h-16 border-b border-white/5 bg-[#111318] px-4 sm:px-8 flex items-center justify-between">
-      <div className="flex items-center gap-6">
-        <Link href="/" className="flex items-center gap-2.5 sm:gap-3 hover:opacity-80 transition-opacity">
-          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
-            <Bot className="w-5 h-5 text-black" />
-          </div>
-          <span className="font-bold text-white tracking-tight text-base sm:text-lg">CobrançaIA</span>
-        </Link>
+    <header className="relative border-b border-white/5 bg-[#111318]">
+      <div className="h-16 px-4 sm:px-8 flex items-center justify-between">
+        <div className="flex items-center gap-4 sm:gap-6">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+            aria-label="Abrir menu de navegação"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
 
-        <nav className="hidden md:flex items-center gap-1 ml-4 border-l border-white/10 pl-6">
-          <Link
-            href="/"
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-              pathname === '/' || pathname?.startsWith('/cases')
-                ? 'bg-white/10 text-white'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            Casos
+          <Link href="/" className="flex items-center gap-2.5 sm:gap-3 hover:opacity-80 transition-opacity">
+            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+              <Bot className="w-5 h-5 text-black" />
+            </div>
+            <span className="font-bold text-white tracking-tight text-base sm:text-lg">CobrançaIA</span>
           </Link>
-          <Link
-            href="/debtors"
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-              pathname?.startsWith('/debtors')
-                ? 'bg-white/10 text-white'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            Devedores
+
+          <nav className="hidden md:flex items-center gap-1 ml-4 border-l border-white/10 pl-6">
+            {navLinks.map((link) => {
+              const Icon = link.icon;
+              const active = isActive(link.href, link.exact);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-white/10 text-white'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {link.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm">
+          {isSuperAdmin && (
+            <Link href="/admin/users" className="hidden sm:flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-md hover:bg-emerald-500/20 transition-colors font-medium border border-emerald-500/20">
+              <Shield className="w-4 h-4" />
+              Painel Admin
+            </Link>
+          )}
+          <span className="text-slate-500 hidden lg:inline">{userName}</span>
+          <div className="w-px h-5 sm:h-6 bg-white/10 hidden sm:block"></div>
+          <Link href="/settings" className="hover:opacity-80 transition-opacity">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-xs shadow-lg shrink-0">
+              {getInitials(profile?.name || user?.user_metadata?.name, user?.email)}
+            </div>
           </Link>
-          <Link
-            href="/agents"
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-              pathname?.startsWith('/agents')
-                ? 'bg-white/10 text-white'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
+          <button
+            onClick={handleLogout}
+            className="text-slate-400 hover:text-white transition-colors p-2"
+            title="Sair"
           >
-            <Cpu className="w-4 h-4" />
-            Agentes IA
-          </Link>
-        </nav>
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm">
-        <Link
-          href="/agents"
-          className={`md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            pathname?.startsWith('/agents') ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          <Cpu className="w-4 h-4" />
-          Agentes
-        </Link>
-        {isSuperAdmin && (
-          <Link href="/admin/users" className="hidden sm:flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-md hover:bg-emerald-500/20 transition-colors font-medium border border-emerald-500/20">
-            <Shield className="w-4 h-4" />
-            Painel Admin
-          </Link>
-        )}
-        <span className="text-slate-500 hidden lg:inline">{user?.email || 'Painel do Advogado'}</span>
-        <div className="w-px h-5 sm:h-6 bg-white/10 hidden sm:block"></div>
-        <Link href="/settings" className="hover:opacity-80 transition-opacity">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-xs shadow-lg shrink-0">
-            {getInitials(user?.email)}
+      {/* Mobile Navigation Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-white/5 bg-[#161922] px-4 py-3 space-y-1 shadow-2xl">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 pt-1 pb-2">
+            Navegação
           </div>
-        </Link>
-        <button
-          onClick={handleLogout}
-          className="text-slate-400 hover:text-white transition-colors p-2"
-          title="Sair"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
-      </div>
+          {navLinks.map((link) => {
+            const Icon = link.icon;
+            const active = isActive(link.href, link.exact);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  active
+                    ? 'bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/20'
+                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Icon className={`w-4 h-4 ${active ? 'text-emerald-400' : 'text-slate-400'}`} />
+                {link.label}
+              </Link>
+            );
+          })}
+
+          <div className="border-t border-white/5 pt-2 mt-2 space-y-1">
+            <Link
+              href="/settings"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                pathname === '/settings'
+                  ? 'bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/20'
+                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Settings className="w-4 h-4 text-slate-400" />
+              Configurações
+            </Link>
+
+            {isSuperAdmin && (
+              <Link
+                href="/admin/users"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  pathname?.startsWith('/admin')
+                    ? 'bg-emerald-500/15 text-emerald-400 font-semibold border border-emerald-500/20'
+                    : 'text-emerald-400 hover:bg-emerald-500/10'
+                }`}
+              >
+                <Shield className="w-4 h-4 text-emerald-400" />
+                Painel Admin
+              </Link>
+            )}
+
+            <div className="px-3 pt-2 pb-1 text-xs text-slate-400 border-t border-white/5 mt-2 flex items-center justify-between">
+              <span className="truncate max-w-[200px]">{userName}</span>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="text-red-400 hover:text-red-300 flex items-center gap-1.5 text-xs font-medium py-1 px-2 rounded hover:bg-red-500/10 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Sair
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
+
 

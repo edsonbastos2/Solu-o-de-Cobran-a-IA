@@ -6,28 +6,35 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
 
     if (!supabase) {
-      return NextResponse.json({ agents: DEFAULT_AGENTS });
+      return NextResponse.json({ agents: DEFAULT_AGENTS, count: DEFAULT_AGENTS.length, totalPages: 1 });
     }
 
-    let query = supabase.from('agents').select('*');
+    let query = supabase.from('agents').select('*', { count: 'exact' });
     if (userId) {
       query = query.or(`user_id.eq.${userId},user_id.is.null`);
     } else {
       query = query.is('user_id', null);
     }
 
-    const { data, error } = await query.order('created_at', { ascending: true });
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const { data, error, count } = await query
+      .order('created_at', { ascending: true })
+      .range(from, to);
 
     if (error || !data || data.length === 0) {
-      return NextResponse.json({ agents: DEFAULT_AGENTS });
+      return NextResponse.json({ agents: DEFAULT_AGENTS, count: DEFAULT_AGENTS.length, totalPages: 1 });
     }
 
-    return NextResponse.json({ agents: data });
+    return NextResponse.json({ agents: data, count: count || 0, totalPages: Math.ceil((count || 0) / limit) });
   } catch (error: any) {
     console.error("GET Agents error:", error);
-    return NextResponse.json({ agents: DEFAULT_AGENTS });
+    return NextResponse.json({ agents: DEFAULT_AGENTS, count: DEFAULT_AGENTS.length, totalPages: 1 });
   }
 }
 

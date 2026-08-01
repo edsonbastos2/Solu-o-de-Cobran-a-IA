@@ -9,6 +9,7 @@ import { Shield, ShieldAlert, ShieldCheck, Mail, Phone, Calendar, UserPlus, Tras
 import useSWR from 'swr';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { Pagination } from '@/components/pagination';
 
 type Profile = {
   id: string;
@@ -21,19 +22,18 @@ type Profile = {
   ai_model: string;
 };
 
-const fetchProfiles = async () => {
-  if (!supabase) throw new Error("Supabase não configurado.");
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return data || [];
+const fetchProfiles = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Erro ao buscar usuários");
+  return res.json();
 };
 
 export default function AdminUsersPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+
+  const [page, setPage] = useState(1);
+  const limit = 10;
 
   const [isUpdating, setIsUpdating] = useState<string | null>(null);
   
@@ -47,11 +47,12 @@ export default function AdminUsersPage() {
   const [formError, setFormError] = useState('');
   const [formLoading, setFormLoading] = useState(false);
 
-  const { data: profiles, error, mutate } = useSWR<Profile[]>('admin-profiles', fetchProfiles, {
+  const { data, error, mutate } = useSWR<{ profiles: Profile[], count: number, totalPages: number }>(`/api/admin/users?page=${page}&limit=${limit}`, fetchProfiles, {
     revalidateOnFocus: false,
   });
 
-  const loading = !profiles && !error;
+  const profiles = data?.profiles;
+  const loading = !data && !error;
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -202,7 +203,7 @@ export default function AdminUsersPage() {
           <div className="flex items-center gap-4">
             <div className="text-sm bg-white/5 px-4 py-2 rounded-lg border border-white/10 flex items-center gap-2">
               <span className="text-slate-400">Total:</span>
-              <span className="font-medium text-white">{profiles?.length || 0}</span>
+              <span className="font-medium text-white">{data?.count || 0}</span>
             </div>
             <button 
               onClick={() => {
@@ -322,6 +323,13 @@ export default function AdminUsersPage() {
               </tbody>
             </table>
           </div>
+          
+          <Pagination 
+            currentPage={page} 
+            totalPages={data?.totalPages || 1} 
+            onPageChange={setPage}
+            theme="dark"
+          />
         </div>
       </main>
 

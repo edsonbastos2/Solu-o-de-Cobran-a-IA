@@ -28,6 +28,7 @@ import {
   ChevronUp,
   ArrowDown
 } from 'lucide-react';
+import { Pagination } from '@/components/pagination';
 import { AgentConfig, DEFAULT_AGENTS } from '@/lib/multi-agent';
 
 const ROLE_OPTIONS = [
@@ -61,7 +62,11 @@ const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function AgentsPage() {
   const { user } = useAuth();
-  const { data, mutate, isLoading } = useSWR('/api/agents', fetcher);
+  
+  const [page, setPage] = useState(1);
+  const limit = 10;
+  
+  const { data, mutate, isLoading } = useSWR(`/api/agents?page=${page}&limit=${limit}${user?.id ? `&userId=${user.id}` : ''}`, fetcher);
 
   const agents: AgentConfig[] = data?.agents || DEFAULT_AGENTS;
 
@@ -422,6 +427,15 @@ export default function AgentsPage() {
                 </div>
               );
             })}
+          </div>
+          
+          <div className="mt-6">
+            <Pagination 
+              currentPage={page}
+              totalPages={data?.totalPages || 1}
+              onPageChange={setPage}
+              theme="dark"
+            />
           </div>
         </div>
 

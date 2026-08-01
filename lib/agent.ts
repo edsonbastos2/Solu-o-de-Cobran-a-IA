@@ -6,6 +6,11 @@ import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { getCollectionStage } from '@/lib/finance';
 import { fetchAgents, AgentConfig } from '@/lib/multi-agent';
 
+// Helper function for exponential backoff
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Helper function to call the selected AI provider
 async function callLLM(
   prompt: string,
@@ -15,96 +20,113 @@ async function callLLM(
   apiKey: string,
   ollamaBaseUrl: string,
   temperature: number,
-  responseFormat?: 'json_object'
+  responseFormat?: 'json_object',
+  maxRetries = 3
 ): Promise<string> {
-  if (aiProvider === 'gemini') {
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // For supervisor and quality, we don't necessarily need the full history as they operate on the current message/draft,
-    // but for specialist we do. We pass history as text or format it.
-    // To simplify across all providers and roles, we will just format the history into the system prompt 
-    // or as a continuous conversation if it's the specialist.
-    
-    let contents: any[] = [];
-    if (history && history.length > 0) {
-       contents = history.map((msg: any) => ({
-        role: (msg.role === 'ai' || msg.role === 'human') ? 'model' : 'user',
-        parts: [{ text: msg.content }]
-      }));
-    } else {
-       // If no history, just need an empty contents array to append to
-    }
-    // We expect the 'prompt' to contain the current task. 
-    // Wait, Gemini systemInstruction is passed in config. We will treat 'prompt' as systemInstruction 
-    // if history is provided, and the last message is already in history.
-    // Actually, to make it consistent, if history is provided, 'prompt' is system Instruction, and we don't append a new message.
-    // If history is not provided, 'prompt' is just the content of a new user message.
+  let attempt = 0;
+  
+  while (attempt < maxRetries) {
+    try {
+      if (aiProvider === 'gemini') {
+        const ai = new GoogleGenAI({ apiKey });
+        
+        let contents: any[] = [];
+        if (history && history.length > 0) {
+           contents = history.map((msg: any) => ({
+            role: (msg.role === 'ai' || msg.role === 'human') ? 'model' : 'user',
+            parts: [{ text: msg.content }]
+          }));
+        }
 
-    const reqContents = history ? contents : [{ role: 'user', parts: [{ text: prompt }] }];
+        const reqContents = history ? contents : [{ role: 'user', parts: [{ text: prompt }] }];
 
-    const response = await ai.models.generateContent({
-      model: aiModel,
-      contents: reqContents,
-      config: {
-        systemInstruction: history ? prompt : undefined,
-        temperature,
-        responseMimeType: responseFormat === 'json_object' ? 'application/json' : 'text/plain'
+        const response = await ai.models.generateContent({
+          model: aiModel,
+          contents: reqContents,
+          config: {
+            systemInstruction: history ? prompt : undefined,
+            temperature,
+            responseMimeType: responseFormat === 'json_object' ? 'application/json' : 'text/plain'
+          }
+        });
+        return response.text || "";
+        
+      } else if (aiProvider === 'openai' || aiProvider === 'ollama' || aiProvider === 'openrouter') {
+        const client = new OpenAI({ 
+          apiKey: aiProvider === 'openrouter' ? apiKey : (aiProvider === 'ollama' ? 'ollama' : apiKey), 
+          baseURL: aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : (aiProvider === 'ollama' ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` : undefined) 
+        });
+        
+        let messages: any[] = [];
+        if (history) {
+          messages.push({ role: 'system', content: prompt });
+          messages = messages.concat(history.map((msg: any) => ({
+            role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
+            content: msg.content
+          })));
+        } else {
+          messages.push({ role: 'user', content: prompt });
+        }
+
+        const response = await client.chat.completions.create({
+          model: aiModel,
+          messages: messages,
+          temperature,
+          response_format: responseFormat === 'json_object' ? { type: 'json_object' } : undefined
+        });
+        return response.choices[0].message.content || "";
+
+      } else if (aiProvider === 'anthropic') {
+        const anthropic = new Anthropic({ apiKey });
+        
+        let messages: any[] = [];
+        let system = "";
+        if (history) {
+          system = prompt;
+          messages = history.map((msg: any) => ({
+            role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
+            content: msg.content
+          }));
+        } else {
+          messages.push({ role: 'user', content: prompt });
+        }
+
+        const response = await anthropic.messages.create({
+          model: aiModel,
+          system: system || undefined,
+          max_tokens: 1024,
+          messages: messages,
+          temperature
+        });
+        
+        if (response.content[0].type === 'text') {
+          return response.content[0].text;
+        }
+        return "";
       }
-    });
-    return response.text || "";
-    
-  } else if (aiProvider === 'openai' || aiProvider === 'ollama' || aiProvider === 'openrouter') {
-    const client = new OpenAI({ 
-      apiKey: aiProvider === 'openrouter' ? apiKey : (aiProvider === 'ollama' ? 'ollama' : apiKey), 
-      baseURL: aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : (aiProvider === 'ollama' ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` : undefined) 
-    });
-    
-    let messages: any[] = [];
-    if (history) {
-      messages.push({ role: 'system', content: prompt });
-      messages = messages.concat(history.map((msg: any) => ({
-        role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
-        content: msg.content
-      })));
-    } else {
-      messages.push({ role: 'user', content: prompt });
-    }
+      
+      return "";
+    } catch (error: any) {
+      attempt++;
+      
+      // Check for transient errors (503, 429, or network errors)
+      const isTransient = 
+        error.message?.includes('503') || 
+        error.message?.includes('429') ||
+        error.status === 503 ||
+        error.status === 429 ||
+        error.code === 'ECONNRESET' ||
+        error.code === 'ETIMEDOUT';
 
-    const response = await client.chat.completions.create({
-      model: aiModel,
-      messages: messages,
-      temperature,
-      response_format: responseFormat === 'json_object' ? { type: 'json_object' } : undefined
-    });
-    return response.choices[0].message.content || "";
-
-  } else if (aiProvider === 'anthropic') {
-    const anthropic = new Anthropic({ apiKey });
-    
-    let messages: any[] = [];
-    let system = "";
-    if (history) {
-      system = prompt;
-      messages = history.map((msg: any) => ({
-        role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
-        content: msg.content
-      }));
-    } else {
-      messages.push({ role: 'user', content: prompt });
+      if (isTransient && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.warn(`Transient error in AI call (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms...`, error.message);
+        await sleep(delay);
+        continue;
+      }
+      
+      throw error;
     }
-
-    const response = await anthropic.messages.create({
-      model: aiModel,
-      system: system || undefined,
-      max_tokens: 1024,
-      messages: messages,
-      temperature
-    });
-    
-    if (response.content[0].type === 'text') {
-      return response.content[0].text;
-    }
-    return "";
   }
   
   return "";
@@ -302,8 +324,17 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
     .trim();
 
   if (caseData.phone) {
-    sendWhatsAppMessage(caseData.phone, cleanAiText, caseData.user_id).catch(err => {
+    sendWhatsAppMessage(caseData.phone, cleanAiText, caseData.user_id).catch(async err => {
       console.error("Error in background WhatsApp send:", err);
+      
+      // Notify the dashboard if WhatsApp fails (e.g. session expired)
+      if (supabase) {
+        await supabase.from('messages').insert({
+          case_id: caseId,
+          role: 'system',
+          content: "Falha ao enviar mensagem via WhatsApp. Verifique sua conexão com o Z-API nas configurações."
+        });
+      }
     });
   }
 
