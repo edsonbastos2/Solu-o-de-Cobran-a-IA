@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getTenantAccess } from '@/lib/tenant';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
 
@@ -11,10 +13,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ contracts: [], count: 0, totalPages: 1 });
     }
 
+    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
+
+    if (!userId) {
+      return NextResponse.json({ contracts: [], count: 0, totalPages: 1 });
+    }
+
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    const { data, error, count } = await supabase
+    let query = supabase
       .from('contracts')
       .select(`
         id,
@@ -22,7 +30,14 @@ export async function GET(req: NextRequest) {
         type,
         created_at,
         clients (name, document)
-      `, { count: 'exact' })
+      `, { count: 'exact' });
+
+    // Strict Tenant Isolation
+    if (!isSuperAdmin) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(from, to);
 

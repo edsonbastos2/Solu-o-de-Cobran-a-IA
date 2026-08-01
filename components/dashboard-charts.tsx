@@ -1,6 +1,7 @@
 'use client';
 
 import useSWR from 'swr';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   BarChart, 
   Bar, 
@@ -20,7 +21,8 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 const COLORS = ['#10b981', '#f43f5e', '#3b82f6', '#f59e0b'];
 
 export function DashboardCharts() {
-  const { data, error, isLoading } = useSWR('/api/dashboard/metrics', fetcher);
+  const { user } = useAuth();
+  const { data, error, isLoading } = useSWR(user?.id ? `/api/dashboard/metrics?userId=${user.id}` : null, fetcher);
 
   if (isLoading) {
     return (

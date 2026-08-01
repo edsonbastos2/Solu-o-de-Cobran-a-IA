@@ -35,7 +35,7 @@ export default function CasesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const limit = 10;
 
-  const queryUrl = `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}`;
+  const queryUrl = user?.id ? `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}&userId=${user.id}` : null;
   const { data, isLoading: loading, mutate } = useSWR(queryUrl, fetcher, {
     refreshInterval: 5000 // Polling fallback every 5s
   });

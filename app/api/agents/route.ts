@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { DEFAULT_AGENTS, AgentConfig } from '@/lib/multi-agent';
+import { DEFAULT_AGENTS } from '@/lib/multi-agent';
+import { getTenantAccess } from '@/lib/tenant';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
+    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
 
@@ -13,11 +14,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ agents: DEFAULT_AGENTS, count: DEFAULT_AGENTS.length, totalPages: 1 });
     }
 
+    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
+
     let query = supabase.from('agents').select('*', { count: 'exact' });
-    if (userId) {
-      query = query.or(`user_id.eq.${userId},user_id.is.null`);
-    } else {
-      query = query.is('user_id', null);
+
+    if (!isSuperAdmin) {
+      if (userId) {
+        query = query.or(`user_id.eq.${userId},user_id.is.null`);
+      } else {
+        query = query.is('user_id', null);
+      }
     }
 
     const from = (page - 1) * limit;
@@ -83,6 +89,8 @@ export async function POST(req: NextRequest) {
       user_id
     } = body;
 
+    const targetUserId = user_id || req.headers.get('x-user-id');
+
     if (!name || !role_type || !system_prompt) {
       return NextResponse.json({ error: "Nome, tipo e prompt do sistema são obrigatórios." }, { status: 400 });
     }
@@ -99,7 +107,7 @@ export async function POST(req: NextRequest) {
       max_discount: max_discount !== undefined ? Number(max_discount) : 10,
       tone: tone || 'profissional',
       is_active: is_active !== undefined ? is_active : true,
-      user_id: user_id || null
+      user_id: targetUserId || null
     };
 
     const { data, error } = await supabase.from('agents').insert([newAgent]).select().single();

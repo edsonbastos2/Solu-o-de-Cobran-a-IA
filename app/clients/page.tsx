@@ -7,14 +7,16 @@ import { Header } from '@/components/header';
 import { Users, Search, Pencil, Check, X } from 'lucide-react';
 import { formatPhoneInput } from '@/lib/utils';
 import { Pagination } from '@/components/pagination';
+import { useAuth } from '@/hooks/useAuth';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function ClientsPage() {
+  const { user } = useAuth();
   const [page, setPage] = useState(1);
   const limit = 10;
   
-  const { data, isLoading: loading, mutate } = useSWR(`/api/clients?page=${page}&limit=${limit}`, fetcher);
+  const { data, isLoading: loading, mutate } = useSWR(user?.id ? `/api/clients?page=${page}&limit=${limit}&userId=${user.id}` : null, fetcher);
   const clients = data?.clients || [];
 
   const [editingId, setEditingId] = useState<string | null>(null);
