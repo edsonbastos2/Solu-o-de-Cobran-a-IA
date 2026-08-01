@@ -1,0 +1,31 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { processMultiAgentSimulation } from '@/lib/multi-agent';
+
+export async function POST(req: NextRequest) {
+  try {
+    const { message, caseInfo, agentsList, apiKey } = await req.json();
+
+    if (!message || !message.trim()) {
+      return NextResponse.json({ error: "Mensagem vazia." }, { status: 400 });
+    }
+
+    const defaultCaseInfo = caseInfo || {
+      name: 'João Silva',
+      updated_value: 2450.00,
+      diasAtraso: 45,
+      effective_max_discount: 15
+    };
+
+    const simulationResult = await processMultiAgentSimulation(
+      message.trim(),
+      defaultCaseInfo,
+      agentsList,
+      apiKey
+    );
+
+    return NextResponse.json(simulationResult);
+  } catch (error: any) {
+    console.error("Simulation error:", error);
+    return NextResponse.json({ error: error.message || "Erro na simulação do multi-agente." }, { status: 500 });
+  }
+}

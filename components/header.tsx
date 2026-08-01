@@ -1,6 +1,6 @@
 'use client';
 
-import { Bot, LogOut, Shield, Users, LayoutDashboard } from 'lucide-react';
+import { Bot, LogOut, Shield, Users, LayoutDashboard, Cpu } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -57,18 +57,29 @@ export function Header() {
             <Users className="w-4 h-4" />
             Devedores
           </Link>
+          <Link
+            href="/agents"
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+              pathname?.startsWith('/agents')
+                ? 'bg-white/10 text-white'
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Cpu className="w-4 h-4" />
+            Agentes IA
+          </Link>
         </nav>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm">
         <Link
-          href="/debtors"
+          href="/agents"
           className={`md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            pathname?.startsWith('/debtors') ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
+            pathname?.startsWith('/agents') ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
           }`}
         >
-          <Users className="w-4 h-4" />
-          Devedores
+          <Cpu className="w-4 h-4" />
+          Agentes
         </Link>
         {isSuperAdmin && (
           <Link href="/admin/users" className="hidden sm:flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-md hover:bg-emerald-500/20 transition-colors font-medium border border-emerald-500/20">
