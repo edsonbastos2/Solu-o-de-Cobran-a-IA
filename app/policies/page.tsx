@@ -9,14 +9,14 @@ import { Plus, Pencil, Check, X, ShieldAlert } from 'lucide-react';
 import { Pagination } from '@/components/pagination';
 import { useAuth } from '@/hooks/useAuth';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from "@/lib/api";
 
 export default function PoliciesPage() {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
   const limit = 10;
   
-  const { data, isLoading: loading, mutate } = useSWR(user?.id ? `/api/policies?page=${page}&limit=${limit}&userId=${user.id}` : null, fetcher);
+  const { data, isLoading: loading, mutate } = useSWR(`/api/policies?page=${page}&limit=${limit}`, fetcher);
   const policies = data?.policies || [];
 
   const [editingId, setEditingId] = useState<string | null>(null);

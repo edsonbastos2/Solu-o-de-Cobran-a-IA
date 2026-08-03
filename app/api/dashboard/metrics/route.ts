@@ -1,113 +1,99 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { format, parseISO, startOfMonth, subMonths } from 'date-fns';
-import { getTenantAccess } from '@/lib/tenant';
+import { getSupabaseServer } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
-
+    const supabase = getSupabaseServer(req);
     if (!supabase) {
-      return NextResponse.json({ 
-        contractsByMonth: [], 
-        paymentStatus: [] 
+      return NextResponse.json({
+        total_cases: 0,
+        active_cases: 0,
+        recovered_amount: 0,
+        pending_amount: 0,
+        success_rate: 0
       });
     }
 
-    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
+    // Since RLS is enabled and handles isolation, we can just query the tables
+    // The query will automatically be filtered down to the current user's data
 
-    if (!userId) {
-      return NextResponse.json({ 
-        contractsByMonth: [], 
-        paymentStatus: [] 
-      });
-    }
+    // Cases
+    const { data: cases, error: casesError } = await supabase
+      .from('cases')
+      .select('status, updated_value, original_value, created_at');
 
-    // Fetch contracts for the last 6 months
-    const sixMonthsAgo = subMonths(new Date(), 5); // 5 + current = 6 months
-    const startOfSixMonthsAgo = startOfMonth(sixMonthsAgo).toISOString();
+    if (casesError) throw casesError;
 
-    let contractsQuery = supabase
-      .from('contracts')
-      .select('id, created_at')
-      .gte('created_at', startOfSixMonthsAgo)
-      .order('created_at', { ascending: true });
-
-    if (!isSuperAdmin) {
-      contractsQuery = contractsQuery.eq('user_id', userId);
-    }
-
-    const { data: contracts, error: contractsError } = await contractsQuery;
-
-    if (contractsError) {
-      console.error(contractsError);
-      return NextResponse.json({ error: contractsError.message }, { status: 400 });
-    }
-
-    // Group contracts by month
-    const contractsByMonthMap: Record<string, number> = {};
+    const total_cases = cases?.length || 0;
+    const active_cases = cases?.filter(c => c.status === 'in_progress' || c.status === 'negotiation' || c.status === 'promise_to_pay').length || 0;
+    const resolved_cases = cases?.filter(c => c.status === 'paid' || c.status === 'agreed').length || 0;
     
-    // Initialize last 6 months with 0
-    for (let i = 5; i >= 0; i--) {
-      const month = format(subMonths(new Date(), i), 'MMM/yyyy');
-      contractsByMonthMap[month] = 0;
-    }
-
-    contracts?.forEach((contract: any) => {
-      if (contract.created_at) {
-        const month = format(parseISO(contract.created_at), 'MMM/yyyy');
-        if (contractsByMonthMap[month] !== undefined) {
-          contractsByMonthMap[month]++;
-        }
+    let pending_amount = 0;
+    cases?.forEach(c => {
+      if (c.status !== 'paid' && c.status !== 'agreed') {
+        pending_amount += Number(c.updated_value || c.original_value || 0);
       }
     });
 
-    const contractsByMonth = Object.entries(contractsByMonthMap).map(([name, Novas]) => ({
-      name,
-      Novas
-    }));
+    const success_rate = total_cases > 0 ? (resolved_cases / total_cases) * 100 : 0;
 
-    // Fetch payment status for user's contracts
-    let installments: any[] = [];
-    if (isSuperAdmin) {
-      const { data: instData, error: instErr } = await supabase.from('installments').select('status');
-      if (instErr) throw instErr;
-      installments = instData || [];
-    } else {
-      const userContractIds = contracts?.map((c: any) => c.id) || [];
-      if (userContractIds.length > 0) {
-        const { data: instData, error: instErr } = await supabase
-          .from('installments')
-          .select('status')
-          .in('contract_id', userContractIds);
-        if (instErr) throw instErr;
-        installments = instData || [];
+    // Contracts and Installments for Recovered Amount
+    const { data: contracts, error: contractsError } = await supabase
+      .from('contracts')
+      .select('id');
+      
+    let recovered_amount = 0;
+    
+    if (!contractsError && contracts && contracts.length > 0) {
+      const userContractIds = contracts.map((c: any) => c.id);
+      
+      const { data: installments, error: instErr } = await supabase
+        .from('installments')
+        .select('amount')
+        .in('contract_id', userContractIds)
+        .eq('status', 'paid');
+        
+      if (!instErr && installments) {
+        recovered_amount = installments.reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
       }
     }
-
-    let paid = 0;
-    let pending = 0;
-
-    installments.forEach((inst: any) => {
-      if (inst.status === 'paid') {
-        paid++;
-      } else {
-        pending++; // Count pending, late, in_negotiation as pending for this metric
-      }
-    });
 
     const paymentStatus = [
-      { name: 'Realizados', value: paid },
-      { name: 'Pendentes', value: pending }
-    ];
+      { name: 'Resolvidos', value: resolved_cases },
+      { name: 'Em Andamento', value: active_cases },
+      { name: 'Outros', value: total_cases - resolved_cases - active_cases }
+    ].filter(item => item.value > 0);
 
-    return NextResponse.json({ 
-      contractsByMonth,
-      paymentStatus
+    const contractsByMonth: any[] = [];
+    if (cases) {
+      const monthMap = new Map<string, number>();
+      cases.forEach(c => {
+        const date = new Date(c.created_at || Date.now());
+        const monthYear = `${date.toLocaleString('pt-BR', { month: 'short' })} ${date.getFullYear()}`;
+        monthMap.set(monthYear, (monthMap.get(monthYear) || 0) + 1);
+      });
+      monthMap.forEach((count, monthYear) => {
+        contractsByMonth.push({ name: monthYear, Novas: count });
+      });
+    }
+
+    // Default if empty to show something on the chart instead of crashing or being totally empty
+    if (paymentStatus.length === 0) {
+      paymentStatus.push({ name: 'Sem dados', value: 1 });
+    }
+    
+    return NextResponse.json({
+      total_cases,
+      active_cases,
+      recovered_amount,
+      pending_amount,
+      success_rate: Math.round(success_rate),
+      paymentStatus,
+      contractsByMonth
     });
+
   } catch (error: any) {
-    console.error("Dashboard metrics API error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Error fetching dashboard metrics:', error);
+    return NextResponse.json({ error: error.message || 'Erro ao carregar métricas' }, { status: 500 });
   }
 }

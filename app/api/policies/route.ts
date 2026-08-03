@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { getTenantAccess } from '@/lib/tenant';
+import { getSupabaseServer } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
 
+    const supabase = getSupabaseServer(req);
     if (!supabase) {
       return NextResponse.json({ policies: [], count: 0, totalPages: 1 });
     }
-
-    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
 
     const from = (page - 1) * limit;
     const to = from + limit - 1;
@@ -22,16 +19,8 @@ export async function GET(req: NextRequest) {
       .from('collection_policies')
       .select('*', { count: 'exact' });
 
-    if (!isSuperAdmin) {
-      if (userId) {
-        query = query.or(`user_id.eq.${userId},user_id.is.null`);
-      } else {
-        query = query.is('user_id', null);
-      }
-    }
-
     const { data, error, count } = await query
-      .order('name', { ascending: true })
+      .order('created_at', { ascending: false })
       .range(from, to);
 
     if (error) {
@@ -45,5 +34,27 @@ export async function GET(req: NextRequest) {
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const supabase = getSupabaseServer(req);
+    if (!supabase) return NextResponse.json({ error: 'Supabase não configurado' }, { status: 500 });
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { data, error } = await supabase
+      .from('collection_policies')
+      .insert({ ...body, user_id: user?.id })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true, policy: data });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 }

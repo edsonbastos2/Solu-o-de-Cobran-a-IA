@@ -8,14 +8,14 @@ import { Plus, FileText, Search, Eye } from 'lucide-react';
 import { Pagination } from '@/components/pagination';
 import { useAuth } from '@/hooks/useAuth';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from "@/lib/api";
 
 export default function ContractsPage() {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
   const limit = 10;
   
-  const { data, isLoading: loading } = useSWR(user?.id ? `/api/contracts?page=${page}&limit=${limit}&userId=${user.id}` : null, fetcher);
+  const { data, isLoading: loading } = useSWR(`/api/contracts?page=${page}&limit=${limit}`, fetcher);
   
   const contracts = data?.contracts || [];
 

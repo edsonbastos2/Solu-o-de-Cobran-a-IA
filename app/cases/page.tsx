@@ -24,7 +24,7 @@ import { formatPhoneInput } from '@/lib/utils';
 import { Pagination } from '@/components/pagination';
 import { Case } from '@/lib/types';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from "@/lib/api";
 
 export default function CasesPage() {
   const { user } = useAuth();
@@ -35,7 +35,7 @@ export default function CasesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const limit = 10;
 
-  const queryUrl = user?.id ? `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}&userId=${user.id}` : null;
+  const queryUrl = `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}`;
   const { data, isLoading: loading, mutate } = useSWR(queryUrl, fetcher, {
     refreshInterval: 5000 // Polling fallback every 5s
   });

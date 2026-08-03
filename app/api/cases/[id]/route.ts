@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseServer } from '@/lib/supabase-server';
 import { getCollectionStage, calculateUpdatedValue } from '@/lib/finance';
-import { getTenantAccess } from '@/lib/tenant';
 
 export async function GET(
   req: NextRequest,
@@ -9,14 +8,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(req.url);
-    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
+    const supabase = getSupabaseServer(req);
 
     if (!supabase) {
       return NextResponse.json({ error: 'Supabase não configurado.' }, { status: 500 });
     }
-
-    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
 
     const { data: caseData, error: caseError } = await supabase
       .from('cases')
@@ -25,12 +21,7 @@ export async function GET(
       .single();
 
     if (caseError || !caseData) {
-      return NextResponse.json({ error: 'Caso não encontrado' }, { status: 404 });
-    }
-
-    // Tenant Isolation Check
-    if (userId && !isSuperAdmin && caseData.user_id && caseData.user_id !== userId) {
-      return NextResponse.json({ error: 'Acesso negado. Este caso pertence a outra empresa.' }, { status: 403 });
+      return NextResponse.json({ error: 'Caso não encontrado ou acesso negado' }, { status: 404 });
     }
 
     // Recalculate value
@@ -75,19 +66,10 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(req.url);
-    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
+    const supabase = getSupabaseServer(req);
 
     if (!supabase) {
       return NextResponse.json({ error: 'Supabase não configurado.' }, { status: 500 });
-    }
-
-    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
-
-    // Check ownership first
-    const { data: caseData } = await supabase.from('cases').select('user_id').eq('id', id).single();
-    if (caseData && userId && !isSuperAdmin && caseData.user_id && caseData.user_id !== userId) {
-      return NextResponse.json({ error: 'Acesso negado. Ação não permitida em caso de outro tenant.' }, { status: 403 });
     }
 
     const body = await req.json();
@@ -116,19 +98,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { searchParams } = new URL(req.url);
-    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
+    const supabase = getSupabaseServer(req);
 
     if (!supabase) {
       return NextResponse.json({ error: 'Supabase não configurado.' }, { status: 500 });
-    }
-
-    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
-
-    // Check ownership first
-    const { data: caseData } = await supabase.from('cases').select('user_id').eq('id', id).single();
-    if (caseData && userId && !isSuperAdmin && caseData.user_id && caseData.user_id !== userId) {
-      return NextResponse.json({ error: 'Acesso negado. Ação não permitida em caso de outro tenant.' }, { status: 403 });
     }
 
     // Delete messages first

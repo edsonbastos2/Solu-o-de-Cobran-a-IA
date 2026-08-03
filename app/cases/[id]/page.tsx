@@ -6,7 +6,7 @@ import useSWR from 'swr';
 import { supabase } from '@/lib/supabase';
 import { Header } from '@/components/header';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from "@/lib/api";
 import { 
   ArrowLeft, 
   Bot, 

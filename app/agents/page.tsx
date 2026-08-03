@@ -58,7 +58,7 @@ const TONE_OPTIONS = [
   { value: 'negociador', label: 'Negociador e Persuasivo' }
 ];
 
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
+import { fetcher } from "@/lib/api";
 
 export default function AgentsPage() {
   const { user } = useAuth();
@@ -66,7 +66,7 @@ export default function AgentsPage() {
   const [page, setPage] = useState(1);
   const limit = 10;
   
-  const { data, mutate, isLoading } = useSWR(`/api/agents?page=${page}&limit=${limit}${user?.id ? `&userId=${user.id}` : ''}`, fetcher);
+  const { data, mutate, isLoading } = useSWR(`/api/agents?page=${page}&limit=${limit}`, fetcher);
 
   const agents: AgentConfig[] = data?.agents || DEFAULT_AGENTS;
 

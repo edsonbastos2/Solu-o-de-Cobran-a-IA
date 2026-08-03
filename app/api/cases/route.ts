@@ -1,39 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseServer } from '@/lib/supabase-server';
 import { calculateUpdatedValue } from '@/lib/finance';
-import { getTenantAccess } from '@/lib/tenant';
 
 export async function GET(req: NextRequest) {
   try {
+    const supabase = getSupabaseServer(req);
     if (!supabase) {
       return NextResponse.json({ cases: [], totalPages: 1, total: 0 });
     }
 
     const { searchParams } = new URL(req.url);
-    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || '';
-
-    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
-
-    // If no user ID provided, return empty list to prevent unauthenticated global leaks
-    if (!userId) {
-      return NextResponse.json({ cases: [], totalPages: 1, total: 0, page: 1 });
-    }
 
     const offset = (page - 1) * limit;
 
     let query = supabase
       .from('cases')
       .select('*', { count: 'exact' });
-
-    // Strict Tenant Isolation: Regular tenants only see their own cases.
-    // Super admins see all cases.
-    if (!isSuperAdmin) {
-      query = query.eq('user_id', userId);
-    }
 
     if (search.trim()) {
       const term = `%${search.trim()}%`;
@@ -78,6 +64,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = getSupabaseServer(req);
     if (!supabase) {
       return NextResponse.json({ error: 'Supabase não configurado.' }, { status: 500 });
     }
@@ -95,11 +82,16 @@ export async function POST(req: NextRequest) {
       user_id
     } = body;
 
-    const targetUserId = user_id || req.headers.get('x-user-id');
-
     if (!name || !phone || original_value === undefined || !due_date) {
       return NextResponse.json({ error: 'Preencha os campos obrigatórios: Nome, Telefone, Valor e Data de Vencimento.' }, { status: 400 });
     }
+
+    // Get current user id from auth context to enforce assignment to the logged-in user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    // For superadmin, they might pass user_id to assign to someone else.
+    // If not superadmin, RLS will block inserting for a different user_id anyway.
+    const targetUserId = user_id || user?.id;
 
     const origVal = parseFloat(original_value);
     const discountMargin = max_discount_margin !== undefined && max_discount_margin !== '' ? parseFloat(max_discount_margin) : 10;

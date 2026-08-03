@@ -1,122 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { DEFAULT_AGENTS } from '@/lib/multi-agent';
-import { getTenantAccess } from '@/lib/tenant';
+import { getSupabaseServer } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const requestedUserId = searchParams.get('userId') || req.headers.get('x-user-id');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
 
+    const supabase = getSupabaseServer(req);
     if (!supabase) {
-      return NextResponse.json({ agents: DEFAULT_AGENTS, count: DEFAULT_AGENTS.length, totalPages: 1 });
-    }
-
-    const { userId, isSuperAdmin } = await getTenantAccess(requestedUserId);
-
-    let query = supabase.from('agents').select('*', { count: 'exact' });
-
-    if (!isSuperAdmin) {
-      if (userId) {
-        query = query.or(`user_id.eq.${userId},user_id.is.null`);
-      } else {
-        query = query.is('user_id', null);
-      }
+      return NextResponse.json({ agents: [], count: 0, totalPages: 1 });
     }
 
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
+    let query = supabase
+      .from('agents')
+      .select('*', { count: 'exact' });
+
     const { data, error, count } = await query
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .range(from, to);
 
-    if (error || !data || data.length === 0) {
-      return NextResponse.json({ agents: DEFAULT_AGENTS, count: DEFAULT_AGENTS.length, totalPages: 1 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ agents: data, count: count || 0, totalPages: Math.ceil((count || 0) / limit) });
+    return NextResponse.json({ 
+      agents: data || [], 
+      count: count || 0, 
+      totalPages: Math.ceil((count || 0) / limit) 
+    });
   } catch (error: any) {
-    console.error("GET Agents error:", error);
-    return NextResponse.json({ agents: DEFAULT_AGENTS, count: DEFAULT_AGENTS.length, totalPages: 1 });
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-
-    if (!supabase) {
-      return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
-    }
-
-    // Check if reset defaults is requested
-    if (body.action === 'reset_defaults') {
-      const { userId } = body;
-      
-      if (userId) {
-        await supabase.from('agents').delete().eq('user_id', userId);
-      }
-
-      // Insert defaults for user
-      const agentsToInsert = DEFAULT_AGENTS.map(agent => ({
-        ...agent,
-        id: undefined, // Let Supabase generate UUID
-        user_id: userId || null
-      }));
-
-      const { data, error } = await supabase.from('agents').insert(agentsToInsert).select();
-      if (error) throw error;
-
-      return NextResponse.json({ agents: data || DEFAULT_AGENTS });
-    }
-
-    // Single agent creation
-    const {
-      name,
-      role_type,
-      icon,
-      color,
-      description,
-      system_prompt,
-      model,
-      temperature,
-      max_discount,
-      tone,
-      is_active,
-      user_id
-    } = body;
-
-    const targetUserId = user_id || req.headers.get('x-user-id');
-
-    if (!name || !role_type || !system_prompt) {
-      return NextResponse.json({ error: "Nome, tipo e prompt do sistema são obrigatórios." }, { status: 400 });
-    }
-
-    const newAgent = {
-      name,
-      role_type,
-      icon: icon || 'Bot',
-      color: color || 'bg-blue-600',
-      description: description || '',
-      system_prompt,
-      model: model || 'gemini-3.5-flash',
-      temperature: temperature !== undefined ? Number(temperature) : 0.2,
-      max_discount: max_discount !== undefined ? Number(max_discount) : 10,
-      tone: tone || 'profissional',
-      is_active: is_active !== undefined ? is_active : true,
-      user_id: targetUserId || null
-    };
-
-    const { data, error } = await supabase.from('agents').insert([newAgent]).select().single();
-
-    if (error) throw error;
-
-    return NextResponse.json({ agent: data });
-  } catch (error: any) {
-    console.error("POST Agent error:", error);
-    return NextResponse.json({ error: error.message || "Erro ao criar agente." }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

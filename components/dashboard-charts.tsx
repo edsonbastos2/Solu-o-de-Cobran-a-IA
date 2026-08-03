@@ -16,13 +16,13 @@ import {
   Legend
 } from 'recharts';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from "@/lib/api";
 
 const COLORS = ['#10b981', '#f43f5e', '#3b82f6', '#f59e0b'];
 
 export function DashboardCharts() {
   const { user } = useAuth();
-  const { data, error, isLoading } = useSWR(user?.id ? `/api/dashboard/metrics?userId=${user.id}` : null, fetcher);
+  const { data, error, isLoading } = useSWR(`/api/dashboard/metrics`, fetcher);
 
   if (isLoading) {
     return (
@@ -51,7 +51,8 @@ export function DashboardCharts() {
     );
   }
 
-  const { contractsByMonth, paymentStatus } = data;
+  const contractsByMonth = data.contractsByMonth || [];
+  const paymentStatus = data.paymentStatus || [];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
