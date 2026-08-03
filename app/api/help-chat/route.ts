@@ -1,8 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 const SYSTEM_INSTRUCTION = `Você é o assistente virtual (Agente Especialista) de uma plataforma SaaS multiempresa de recuperação de crédito baseada em Inteligência Artificial, chamada CobrançaIA.
 
 Seu objetivo é ensinar e guiar os usuários (operadores, advogados, gerentes e administradores) sobre como utilizar cada funcionalidade do sistema em tempo real.
@@ -60,28 +58,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid messages format" }, { status: 400 });
     }
 
-    // Initialize chat session
-    const chat = ai.chats.create({
-      model: "gemini-3.5-flash",
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.3,
-      },
-    });
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ 
+        text: "O assistente virtual está em modo offline. Defina a variável GEMINI_API_KEY para habilitar respostas completas por IA." 
+      });
+    }
 
-    // We can just use the generateContent directly if we don't need strict chat history, 
-    // or format messages properly. For a conversational context, passing the history is better.
-    // However, @google/genai chats.create handles it. Let's pass the history.
-    
-    // Convert previous messages to the format expected by the chat (if needed), or just send 
-    // them via generateContent for simplicity with full history.
+    const ai = new GoogleGenAI({ apiKey });
+
     const contents = messages.map((m: any) => ({
       role: m.role,
       parts: [{ text: m.content }]
     }));
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: contents,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -89,7 +81,7 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    return NextResponse.json({ text: response.text });
+    return NextResponse.json({ text: response.text || "Desculpe, não consegui processar a resposta." });
   } catch (error) {
     console.error("Error in help-chat API:", error);
     return NextResponse.json({ error: "Failed to generate response" }, { status: 500 });

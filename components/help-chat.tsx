@@ -24,9 +24,6 @@ export function HelpChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
-  // Se não estiver logado, não exibe o chat
-  if (!user) return null;
-
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
