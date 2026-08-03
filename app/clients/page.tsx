@@ -16,7 +16,7 @@ export default function ClientsPage() {
   const [page, setPage] = useState(1);
   const limit = 10;
   
-  const { data, isLoading: loading, mutate } = useSWR(`/api/clients?page=${page}&limit=${limit}`, fetcher);
+  const { data, isLoading: loading, mutate } = useSWR([`/api/clients?page=${page}&limit=${limit}`, user?.id || 'anon'], ([url]) => fetcher(url));
   const clients = data?.clients || [];
 
   const [editingId, setEditingId] = useState<string | null>(null);

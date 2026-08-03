@@ -36,7 +36,7 @@ export default function CasesPage() {
   const limit = 10;
 
   const queryUrl = `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}`;
-  const { data, isLoading: loading, mutate } = useSWR(queryUrl, fetcher, {
+  const { data, isLoading: loading, mutate } = useSWR([queryUrl, user?.id || 'anon'], ([url]) => fetcher(url), {
     refreshInterval: 5000 // Polling fallback every 5s
   });
 

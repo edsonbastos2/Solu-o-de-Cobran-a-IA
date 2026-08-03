@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase-server';
+import { getSupabaseServerWithAdminFallback } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest) {
   try {
-    const supabase = getSupabaseServer(req);
+    const supabase = await getSupabaseServerWithAdminFallback(req);
     if (!supabase) {
       return NextResponse.json({
         total_cases: 0,

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase-server';
+import { getSupabaseServer, getSupabaseServerWithAdminFallback } from '@/lib/supabase-server';
 import { calculateUpdatedValue } from '@/lib/finance';
 
 export async function GET(req: NextRequest) {
   try {
-    const supabase = getSupabaseServer(req);
+    const supabase = await getSupabaseServerWithAdminFallback(req);
     if (!supabase) {
       return NextResponse.json({ cases: [], totalPages: 1, total: 0 });
     }

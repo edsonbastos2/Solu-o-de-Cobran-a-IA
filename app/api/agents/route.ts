@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase-server';
+import { getSupabaseServerWithAdminFallback } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest) {
   try {
@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
 
-    const supabase = getSupabaseServer(req);
+    const supabase = await getSupabaseServerWithAdminFallback(req);
     if (!supabase) {
       return NextResponse.json({ agents: [], count: 0, totalPages: 1 });
     }
