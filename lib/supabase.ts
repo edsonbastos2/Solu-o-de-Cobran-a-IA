@@ -5,53 +5,16 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 const isBrowser = typeof window !== 'undefined';
 
-const customStorage = {
-  getItem: (key: string) => {
-    if (!isBrowser) return null;
-    try {
-      const localVal = localStorage.getItem(key);
-      if (localVal) return localVal;
-    } catch (e) {
-      // localStorage may fail in restricted sandboxes
-    }
-    try {
-      const match = document.cookie.match(new RegExp('(^| )' + key + '=([^;]+)'));
-      return match ? decodeURIComponent(match[2]) : null;
-    } catch (e) {
-      return null;
-    }
-  },
-  setItem: (key: string, value: string) => {
-    if (!isBrowser) return;
-    try {
-      localStorage.setItem(key, value);
-    } catch (e) {}
-    try {
-      const isSecure = window.location.protocol === 'https:';
-      const maxAge = 30 * 24 * 60 * 60; // 30 dias
-      document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax${isSecure ? '; secure' : ''}`;
-    } catch (e) {}
-  },
-  removeItem: (key: string) => {
-    if (!isBrowser) return;
-    try {
-      localStorage.removeItem(key);
-    } catch (e) {}
-    try {
-      document.cookie = `${key}=; path=/; max-age=0; SameSite=Lax`;
-    } catch (e) {}
-  }
-};
-
-// Create a client if keys are present
-export const supabase = supabaseUrl && supabaseAnonKey 
+// Create a client if keys are present.
+// Usamos a configuração padrão de cookies do supabase-js v2 (storage key = sb-<project-ref>-auth-token),
+// em alinhamento com @supabase/ssr usado no middleware.ts. Mantemos localStorage fallback só em
+// ambientes cruzados que ainda precisem dele (sem impactar o cookie principal).
+export const supabase = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        storage: customStorage,
-        storageKey: 'supabase-auth-token',
-        flowType: 'pkce'
+        flowType: 'pkce',
+        persistSession: true,
+        autoRefreshToken: isBrowser
       }
     })
   : null as any;
-
-

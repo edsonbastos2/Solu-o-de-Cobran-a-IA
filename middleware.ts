@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 
 // Rotas públicas (não exigem sessão)
 const PUBLIC_PATHS = [
@@ -33,12 +33,22 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Cliente efêmero só para validar sessão no edge (sem persistência)
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false }
+  // Cria um client server-side que lê/escreve cookies da request
+  const res = NextResponse.next();
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return req.cookies.getAll().map((c) => ({ name: c.name, value: c.value }));
+      },
+      setAll(cookies) {
+        cookies.forEach(({ name, value, options }) => {
+          res.cookies.set(name, value, options);
+        });
+      },
+    },
   });
 
-  // Tenta obter a sessão a partir dos cookies do Supabase (sb-access-token / sb-refresh-token)
+  // Valida a sessão a partir dos cookies (e refresh automaticamente se preciso)
   const { data: { session }, error } = await supabase.auth.getSession();
 
   if (error || !session) {
@@ -52,10 +62,8 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Para rotas /admin* (UI), valida is_super_admin via claim no JWT ou chamada a profiles.
-  // Edge não pode chamar DB; confiamos na flag no cookie/JWT se presente. Client-side AuthGuard reforça.
-  // (Consulta server-side completa é feita nas rotas /api/admin/*.)
-  return NextResponse.next();
+  // Repassa cookies atualizados (refresh de token) na resposta
+  return res;
 }
 
 export const config = {
