@@ -1,121 +1,83 @@
-# Bloco TESTES — `.spec.ts` (sempre)
+# Bloco VALIDAÇÃO — verificação manual (sempre)
 
-Teste de componente da tabela com `@vue/test-utils` + `createTestingPinia` + MSW.
-Segue as regras do projeto (CLAUDE.md): **sem `vi.mock`** de store/API, **sem snapshots**,
-sem dados de mock inline (use handlers MSW existentes em `mocks/`). O modal é **stubado**
-para isolar a tabela.
+Este projeto **não possui suite de testes automatizados**. A validação é feita via
+verificação manual e comandos de build/lint.
 
-> Para detalhes adicionais e o teste de store, ver skill `test-generator` e
-> `frontend-dev/references/frontend.md`. Este bloco cobre o essencial da tabela.
+> Para detalhes adicionais sobre padrões de teste futuros, ver skill `test-generator`.
 
-## `Table{{Entidade}}.spec.ts`
+## Checklist de verificação da tabela
 
-```typescript
-import { {{store}} } from '~/store/{{entidades}}/{{entidades}}'
-import { flushPromises, mount } from '@vue/test-utils'
-import { createTestingPinia } from '@pinia/testing'
-import { waitFor } from '@testing-library/vue'
-import Button from 'primevue/button'
-import Column from 'primevue/column'
-import DataTable from 'primevue/datatable'
-import Card from 'primevue/card'
-import InputText from 'primevue/inputtext'
-import PrimeVue from 'primevue/config'
-import ToastService from 'primevue/toastservice'
-import ConfirmationService from 'primevue/confirmationservice'
-import Table{{Entidade}} from './Table{{Entidade}}.vue'
-import { UnwrapPromise } from '~~/models/GeneralInterfaces'
+### Compilação e lint
 
-const renderComponent = async () => {
-  const wrapper = mount(Table{{Entidade}}, {
-    global: {
-      stubs: {
-        // Stub do modal para isolar a tabela (omitir se não houver modal)
-        Modal{{Entidade}}: {
-          name: 'Modal{{Entidade}}',
-          emits: ['displayModal'],
-          template: '<div>Modal {{Entidade}}</div>'
-        }
-      },
-      plugins: [
-        createTestingPinia({ stubActions: false }),
-        PrimeVue,
-        ToastService,
-        ConfirmationService
-      ],
-      components: { Card, DataTable, Column, Button, InputText }
-    }
-  })
+```bash
+# Verificar TypeScript
+npx tsc --noEmit
 
-  const {{entidade}}Store = {{store}}()
-  wrapper.vm.nuxt = vi.fn() as any
-  return { wrapper, {{entidade}}Store }
-}
+# Verificar ESLint
+npm run lint
 
-describe('Table{{Entidade}}', () => {
-  let comp: UnwrapPromise<ReturnType<typeof renderComponent>>
-
-  beforeAll(async () => {
-    comp = await renderComponent()
-  })
-
-  it('renderiza o componente', async () => {
-    await comp.{{entidade}}Store.index()
-    await flushPromises()
-    expect(comp.wrapper.exists()).toBe(true)
-  })
-
-  it('abre o modal ao clicar em Adicionar', async () => {
-    const btn = comp.wrapper.find('[data-testid="botao-adicionar-{{entidade}}"]')
-    const openModal = vi.spyOn(comp.wrapper.vm, 'openModal')
-    await btn.trigger('click')
-    expect(openModal).toHaveBeenCalled()
-    expect(comp.wrapper.vm.displayModal).toBe(true)
-  })
-
-  it('lista os registros no DataTable', async () => {
-    await comp.{{entidade}}Store.index()
-    await waitFor(() =>
-      expect(comp.wrapper.vm.list{{Entidade}}.length).toBeGreaterThan(0)
-    )
-  })
-
-  it('chama onPage ao trocar de página', async () => {
-    const onPage = vi.spyOn(comp.wrapper.vm, 'onPage')
-    const dataTable = comp.wrapper.findComponent(DataTable)
-    await dataTable.vm.$emit('page', { first: 6, rows: 5, page: 1 })
-    expect(onPage).toHaveBeenCalled()
-  })
-
-  // Incluir somente se houver ordenação:
-  it('chama onSort ao ordenar', async () => {
-    const onSort = vi.spyOn(comp.wrapper.vm, 'onSort')
-    const dataTable = comp.wrapper.findComponent(DataTable)
-    await dataTable.vm.$emit('sort', {
-      rows: 5,
-      sortField: '{{FIELD_ORDENACAO}}',
-      sortOrder: 1
-    })
-    expect(onSort).toHaveBeenCalled()
-  })
-
-  // Incluir somente se houver filtro:
-  it('aplica busca ao filtrar', async () => {
-    const applySearch = vi.spyOn(comp.wrapper.vm, 'applySearch')
-    await comp.wrapper.vm.applySearch()
-    expect(applySearch).toHaveBeenCalled()
-  })
-})
+# Build completo
+npm run build
 ```
 
-## Regras (CLAUDE.md)
+### Verificações funcionais (executar em `npm run dev`)
 
-- **Nunca** `vi.mock` de store ou de chamadas de API.
-- **Nunca** snapshots (`toMatchSnapshot`/`toMatchInlineSnapshot`/`__snapshots__/`).
-- Usar os **handlers MSW existentes** em `mocks/` (registrados via `mocks/setupTests.ts`).
-  Se a entidade não tiver handler, crie `mocks/{{entidades}}Handlers.ts` (delegue a `test-generator`).
-- Para controlar retorno de action, usar `createTestingPinia({ stubActions: true, createSpy: vi.fn })`
-  + `vi.mocked(store.action).mockResolvedValue(...)` — não inline mock data.
-- Cobrir: render, abrir modal, listagem, paginação, ordenação (se houver), filtro (se houver),
-  remover (confirm) e cenário de erro.
-- Gerar `Modal{{Entidade}}.spec.ts` também quando houver modal (testar `save`, `closeDialog`, `isEdit`).
+- [ ] Tabela renderiza com dados reais da API
+- [ ] Estado de loading: mensagem "Carregando..." visível enquanto carrega
+- [ ] Estado de erro: mensagem de erro visível (simular parando o backend)
+- [ ] Estado vazio: "Nenhum registro encontrado" quando API retorna array vazio
+- [ ] Paginação: trocar de página carrega os dados corretos
+- [ ] Paginação: botão "Anterior" desabilitado na página 1
+- [ ] Paginação: botão "Próximo" desabilitado na última página
+- [ ] Busca: digitar no campo de busca filtra resultados
+- [ ] Busca: limpar campo de busca restaura a lista completa
+- [ ] Filtros por coluna: cada coluna filtrável funciona independentemente
+- [ ] Filtros combinados: múltiplos filtros aplicados simultaneamente
+- [ ] Criar registro: abrir modal, preencher, salvar → registro aparece na lista
+- [ ] Editar registro: clicar em editar, alterar, salvar → lista atualizada
+- [ ] Deletar registro: confirmar exclusão → registro some da lista
+- [ ] Deletar registro: cancelar no confirm não remove o registro
+- [ ] Modal criar: campos iniciam vazios
+- [ ] Modal editar: campos iniciam com dados do registro
+- [ ] Modal: validação de campos obrigatórios impede submit
+- [ ] Modal: mensagem de erro ao falhar salvamento
+- [ ] Modal: fecha ao clicar em Cancelar
+- [ ] Modal: fecha ao clicar no X
+- [ ] Responsividade: testar em 375px, 768px, 1280px
+- [ ] Responsividade: tabela com scroll horizontal em mobile (`overflow-x-auto`)
+- [ ] Responsividade: filtros empilham em mobile, alinham em desktop
+
+### Verificações de segurança multi-tenant
+
+- [ ] Lista só mostra registros do usuário logado (não de outros tenants)
+- [ ] Criar registro associa `user_id` automaticamente (não é enviado pelo cliente)
+- [ ] Editar registro de outro tenant retorna erro
+- [ ] Deletar registro de outro tenant retorna erro
+- [ ] Não é possível acessar registro de outro tenant via URL direta
+
+### Verificações de acessibilidade
+
+- [ ] Tabela usa `<thead>` e `<tbody>` corretamente
+- [ ] Botões têm `title` ou texto acessível
+- [ ] Inputs têm `placeholder` ou `<label>`
+- [ ] Cores de texto têm contraste suficiente no fundo escuro
+- [ ] Ícones de ação (editar/remover) são distinguíveis por cor e forma
+
+## Estrutura de verificação por bloco
+
+| Bloco presente | Verificações extras |
+|---|---|
+| Modal | Criar: validação de campos obrigatórios, feedback de erro. Editar: dados preenchidos corretamente ao abrir. Botão Salvar disabled durante submit |
+| Filtro header | Limpar filtros reseta busca. Mudar filtro → requisição com params corretos. Combinação de filtros. Reset de página ao filtrar |
+| Filtro coluna | Cada coluna filtrável funciona independentemente. Limpar filtro por coluna. Filtros preservados ao trocar de página |
+| Paginação | Última página correta. Navegação sequencial. Voltar à página 1 ao filtrar. Indicador de página atual |
+| Ordenação | Clicar header alterna asc/desc. Seta indicadora visível. Ordenação persiste ao trocar de página. Reset ao mudar ordenação |
+
+## Regras (anti-padrões a evitar)
+
+- **Nunca** pular a verificação de build (`npm run build`) antes de declarar concluído
+- **Nunca** esquecer de verificar o estado de loading e erro (são os bugs mais comuns)
+- **Nunca** assumir que funciona em mobile sem testar (responsividade é obrigatória)
+- **Sempre** testar com o backend real (não com dados mockados mentalmente)
+- **Sempre** verificar multi-tenant: criar como usuário A, logar como usuário B, confirmar que A não vê dados de B e vice-versa
+- **Sempre** abrir o modal tanto para criar quanto para editar (paths diferentes)

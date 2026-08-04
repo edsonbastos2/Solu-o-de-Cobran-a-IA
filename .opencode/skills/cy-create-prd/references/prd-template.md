@@ -1,6 +1,6 @@
 # Template de PRD
 
-Use este template para estruturar todo Documento de Requisitos de Produto. Preencha cada seção com base nos resultados do brainstorming. Deixe orientações de placeholder em seções onde as informações são insuficientes e anote-as em Perguntas em Aberto.
+Use este template para estruturar todo Documento de Requisitos de Produto. Preencha cada seção com base nos resultados do brainstorming.
 
 ## Visão Geral
 
@@ -12,7 +12,7 @@ Visão geral de alto nível da funcionalidade ou produto. Descreva:
 ## Objetivos
 
 Objetivos específicos e mensuráveis para esta funcionalidade ou produto:
-- Métricas de sucesso e indicadores-chave de desempenho
+- Métricas de sucesso e KPIs
 - Objetivos de negócio e resultados esperados
 - Prazos ou marcos alvo
 
@@ -26,7 +26,7 @@ Histórias de usuário organizadas por persona:
 ## Funcionalidades Principais
 
 Funcionalidades principais agrupadas por prioridade:
-- Nome da funcionalidade: o que ela faz, por que é importante, comportamento de alto nível
+- Nome da funcionalidade: o que ela faz, por que é importante
 - Requisitos funcionais para cada funcionalidade
 - Interação entre funcionalidades
 
@@ -46,38 +46,33 @@ Fronteiras necessárias que moldam o produto sem prescrever a implementação:
 - Metas de desempenho da perspectiva do usuário
 - Requisitos de privacidade e segurança de dados
 
-NÃO inclua detalhes de implementação como bancos de dados específicos, frameworks, designs de API ou padrões de arquitetura.
+NÃO inclua detalhes de implementação como bancos de dados, frameworks, designs de API.
 
 ## Fora do Escopo (Não-Objetivos)
 
 Funcionalidades explicitamente excluídas e fronteiras:
-- Funcionalidades intencionalmente adiadas para fases futuras
+- Funcionalidades adiadas para fases futuras
 - Problemas adjacentes que não serão abordados
 - Limites deste esforço
 
 ## Plano de Lançamento em Fases
 
-Plano de entrega incremental com critérios de sucesso por fase:
-
 ### MVP (Fase 1)
 - Funcionalidades principais incluídas
-- Critérios de sucesso para prosseguir para a Fase 2
+- Critérios de sucesso para prosseguir
 
 ### Fase 2
 - Funcionalidades adicionais
-- Critérios de sucesso para prosseguir para a Fase 3
 
 ### Fase 3
 - Conjunto completo de funcionalidades
-- Critérios de sucesso de longo prazo
 
 ## Métricas de Sucesso
 
 Medidas quantificáveis de sucesso:
 - Métricas de engajamento do usuário
-- Benchmarks de desempenho da perspectiva do usuário
+- Benchmarks de desempenho
 - Indicadores de impacto no negócio
-- Atributos de qualidade
 
 ## Riscos e Mitigações
 
@@ -85,13 +80,10 @@ Riscos não técnicos que podem afetar o produto:
 - Riscos de adoção e estratégias de mitigação
 - Riscos competitivos
 - Restrições de prazo e recursos
-- Riscos de dependência de fatores externos
-
-NÃO inclua riscos técnicos como complexidade arquitetural ou dívida técnica.
 
 ## Architecture Decision Records
 
-ADRs documentando decisões chave tomadas durante o brainstorming:
+ADRs documentando decisões chave:
 - [ADR-NNN: Título](adrs/adr-NNN.md) — Resumo de uma linha da decisão
 
 ## Perguntas em Aberto

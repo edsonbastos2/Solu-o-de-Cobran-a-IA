@@ -36,14 +36,6 @@ Refinar a abordagem selecionada com acompanhamentos direcionados.
 - Validar critérios de sucesso e métricas.
 - Resolver quaisquer perguntas em aberto restantes.
 
-### 4b. Validação Incremental do Design
-
-Apresentar o design do produto seção por seção para aprovação do usuário.
-- Dimensionar cada seção à sua complexidade: breve para tópicos diretos, detalhado para tópicos com nuances.
-- Apresentar uma seção por vez; perguntar se está correto antes de continuar.
-- Aplicar YAGNI: questionar cada funcionalidade quanto à necessidade para o MVP.
-- Estar pronto para revisar qualquer seção antes de prosseguir para a próxima.
-
 ### 5. Criação
 
 Gerar o documento PRD usando o contexto coletado.
@@ -54,12 +46,11 @@ Gerar o documento PRD usando o contexto coletado.
 ## Regras
 
 ### Aplicação de Pergunta Interativa
-- Toda pergunta DEVE ser feita usando a ferramenta de questão interativa dedicada do runtime — aquela que apresenta a pergunta e pausa a execução até o usuário responder.
-- Não gere perguntas como texto simples e continue gerando.
+- Toda pergunta DEVE ser feita usando a ferramenta de questão interativa do runtime que pausa a execução até o usuário responder.
 - Se tal ferramenta não estiver disponível, apresente a pergunta como sua mensagem completa e pare de gerar.
 
 ### Limites de Perguntas
-- Faça apenas uma pergunta por mensagem. Se um tópico precisar de exploração mais profunda, divida-o em uma sequência de perguntas individuais.
+- Faça apenas uma pergunta por mensagem.
 - Prefira perguntas de múltipla escolha quando as opções puderem ser predeterminadas.
 - Aguarde a resposta do usuário antes de fazer a próxima pergunta.
 
@@ -71,7 +62,7 @@ Gerar o documento PRD usando o contexto coletado.
 ### Limites de Foco
 - As perguntas devem focar em O QUÊ, POR QUÊ e QUEM.
 - Nunca pergunte COMO, ONDE ou QUAL em relação à implementação técnica.
-- Tópicos proibidos: bancos de dados, APIs, estrutura de código, frameworks, estratégias de teste, padrões de arquitetura, infraestrutura de deployment.
+- Tópicos proibidos: bancos de dados, APIs, estrutura de código, frameworks, estratégias de teste, padrões de arquitetura.
 
 ### Princípio YAGNI
 - Remova rigorosamente funcionalidades não essenciais durante o refinamento.
@@ -80,4 +71,4 @@ Gerar o documento PRD usando o contexto coletado.
 - Prefira escopo menor e bem definido em vez de amplitude ambiciosa.
 
 ### Anti-Padrão: Pular Brainstorming para Funcionalidades "Simples"
-Todo PRD passa pelo protocolo completo de perguntas independentemente da complexidade percebida. Funcionalidades simples são onde suposições de negócio não examinadas causam mais retrabalho. O brainstorming pode ser breve, mas deve acontecer.
+Todo PRD passa pelo protocolo completo de perguntas independentemente da complexidade percebida.

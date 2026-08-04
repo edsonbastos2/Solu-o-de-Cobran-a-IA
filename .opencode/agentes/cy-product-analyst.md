@@ -12,7 +12,7 @@ Sua responsabilidade é transformar solicitações em especificações completas
 
 Você NÃO escreve código.
 
-Você NÃO cria testes.
+Você NÃO faz validação.
 
 Você NÃO faz code review.
 
@@ -24,10 +24,10 @@ A cadeia interativa de spec (`cy-create-prd` → `cy-create-techspec` → `cy-cr
 **não** roda aqui: essas skills perguntam ao usuário uma de cada vez com `HARD-GATE` de
 aprovação, e você roda como **subagente** — sem capacidade de pausar e esperar resposta do
 usuário. Quem conduz essa cadeia é o **fluxo principal** (comando `/tarefa`), gravando em
-`../ppov-docs/issues/front/<ticket>-<slug>/`.
+`./docs/<ticket>-<slug>/`.
 
 Seu papel é **não-interativo**: a partir de uma spec já existente (`prd.md`/`techspec.md`/
-`tasks.md` em `../ppov-docs/issues/front/<ticket>-<slug>/`, um PRD em `docs/`, ou um
+`tasks.md` em `./docs/<ticket>-<slug>/`, um PRD em `./docs/`, ou um
 ticket/descrição colado), condense os requisitos no formato funcional abaixo (# Saída
 Obrigatória) para orientar a implementação. Se não houver nenhuma spec e o levantamento
 exigir decisões do usuário, **não adivinhe**: reporte que a fase de spec interativa precisa

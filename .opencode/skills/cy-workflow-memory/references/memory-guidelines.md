@@ -1,75 +1,35 @@
-# Diretrizes de Memória de Fluxo de Trabalho
+# Diretrizes de Memória
 
-Use estas regras para manter a memória do fluxo de trabalho do Compozy útil entre execuções repetidas de tarefas do PRD.
+## Propósito
 
-## Papéis dos Arquivos
+Arquivos de memória do fluxo de trabalho mantêm contexto durável entre execuções de tarefas do PRD. Eles reduzem a redescoberta e erros repetidos em execuções subsequentes.
 
-### Memória compartilhada do fluxo de trabalho: `MEMORY.md`
+## Estrutura
 
-Use a memória compartilhada do fluxo de trabalho para contexto que deve sobreviver entre múltiplas tarefas e múltiplas execuções.
+```
+./docs/<ticket>-<nome>/memory/
+├── shared.md       # Memória compartilhada entre tarefas (cross-task)
+└── <N>_task.md     # Memória específica da tarefa atual
+```
 
-Mantenha:
-- estado atual do fluxo de trabalho que afeta mais de uma tarefa
-- decisões técnicas ou de produto duráveis
-- aprendizados reutilizáveis que importarão novamente
-- riscos abertos ou notas de entrega que mudam a execução futura
+## O que armazenar na memória compartilhada
 
-Evite:
-- notas de rascunho passo a passo
-- grandes trechos de código
-- fatos que já são explícitos em `prd.md`, `techspec.md`, `tasks.md` ou no próprio repositório
+- Restrições descobertas que afetam múltiplas tarefas
+- Decisões arquiteturais tomadas durante implementação
+- Riscos abertos que tarefas futuras devem considerar
+- Padrões de integração com Supabase, API routes, SWR
 
-### Memória da tarefa atual: `memory/<nome do arquivo de tarefa>`
+## O que manter na memória de tarefa
 
-Use a memória de tarefa para contexto específico da tarefa atual.
+- Arquivos tocados durante a implementação
+- Passos de depuração para erros específicos
+- Snapshot do objetivo e critérios de aceitação
+- Workarounds aplicados apenas ao escopo atual
 
-Mantenha:
-- snapshot do objetivo atual
-- decisões importantes locais da tarefa
-- aprendizados e correções locais
-- arquivos ou superfícies tocados que valem lembrar na próxima execução
-- notas prontas para a próxima execução
+## Compactação
 
-Evite:
-- resumos entre tarefas que pertencem ao `MEMORY.md`
-- reafirmações repetidas da especificação da tarefa
-- transcrições de comandos de baixo sinal
-
-## Regras de Promoção
-
-Promova um item da memória de tarefa para a memória compartilhada do fluxo de trabalho apenas quando for:
-- durável entre execuções
-- útil a outra tarefa
-- provável de prevenir erros repetidos ou redescoberta
-
-Deixe informação na memória de tarefa quando for:
-- operacional apenas para a tarefa atual
-- temporária
-- detalhada demais para reutilização em todo o fluxo de trabalho
-
-## Regras de Compactação
-
-Quando a compactação for necessária:
-- preserve estado atual, decisões duráveis, aprendizados reutilizáveis, riscos abertos e entregas
-- remova repetição, notas obsoletas, transcrições longas e fatos deriváveis
-- reescreva para clareza, não para completude
-- prefira bullets factuais curtos em vez de logs narrativos
-
-## Fronteiras Padrão de Seção
-
-### `MEMORY.md`
-
-- `## Estado Atual`
-- `## Decisões Compartilhadas`
-- `## Aprendizados Compartilhados`
-- `## Riscos Abertos`
-- `## Entregas`
-
-### `memory/<nome do arquivo de tarefa>`
-
-- `## Snapshot do Objetivo`
-- `## Decisões Importantes`
-- `## Aprendizados`
-- `## Arquivos / Superfícies`
-- `## Erros / Correções`
-- `## Pronto para a Próxima Execução`
+Quando solicitado, compacte o arquivo de memória:
+1. Preserve estado atual e decisões duráveis
+2. Remova repetição e notas obsoletas
+3. Reescreva como bullets factuais
+4. Mantenha cabeçalhos de seção intactos

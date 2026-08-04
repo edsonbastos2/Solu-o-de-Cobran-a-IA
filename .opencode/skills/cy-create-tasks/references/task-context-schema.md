@@ -1,27 +1,31 @@
-## Campos Obrigatórios
+# Schema de Contexto de Tarefa
 
-- `status`: Estado do ciclo de vida da tarefa.
-- `title`: Título legível por humanos da tarefa. Deve corresponder ao primeiro H1 no corpo da tarefa.
-- `type`: Slug de tipo de trabalho permitido. Use `[tasks].types` de `.iappov/config.toml` quando configurado; caso contrário use os padrões integrados `frontend`, `backend`, `docs`, `test`, `infra`, `refactor`, `chore`, `bugfix`.
-- `complexity`: Classificação de dificuldade. Deve ser um de: `low`, `medium`, `high`, `critical`.
-- `dependencies`: Lista YAML de nomes de arquivos de tarefas que devem ser concluídas antes desta tarefa. Use `[]` quando não há dependências.
+Definições de campos de metadados para cada arquivo de tarefa (`N_task.md`).
 
-## Valores de Status
+## Frontmatter YAML
 
-Valores válidos para `status`:
+| Campo | Tipo | Obrigatório | Valores |
+|-------|------|-------------|---------|
+| `status` | string | Sim | `pending`, `in_progress`, `completed`, `cancelled` |
+| `title` | string | Sim | Título da tarefa (deve ser igual ao H1 do corpo) |
+| `type` | string | Sim | `frontend`, `backend`, `api`, `supabase`, `ai`, `whatsapp`, `docs`, `refactor`, `chore`, `bugfix` |
+| `complexity` | string | Sim | `low`, `medium`, `high`, `critical` |
+| `dependencies` | string[] | Sim | Lista de arquivos de tarefa dos quais esta depende (ex.: `["1_task"]`) |
 
-- `pending` — a tarefa ainda não foi iniciada.
-- `in_progress` — a tarefa está sendo trabalhada atualmente.
-- `completed` — a tarefa está concluída e verificada.
-- `done` — tratado como concluído.
-- `finished` — tratado como concluído.
+## Seções do Corpo
 
-## Nomenclatura de Arquivos
+| Seção | Obrigatório | Descrição |
+|-------|-------------|-----------|
+| `## Visão Geral` | Sim | 2-3 frases sobre o que a tarefa faz |
+| `<critical>` | Sim | Lembretes críticos (PRD/TechSpec, foco, minimizar código, testes) |
+| `<requirements>` | Sim | Requisitos técnicos numerados com DEVE/DEVERIA |
+| `## Subtarefas` | Sim | 3-7 itens de checklist |
+| `## Detalhes de Implementação` | Sim | Arquivos a criar/modificar, pontos de integração |
+| `### Arquivos Relevantes` | Sim | Arquivos existentes relevantes para a tarefa |
+| `### Arquivos Dependentes` | Sim | Arquivos que serão afetados |
+| `### ADRs Relacionados` | Condicional* | ADRs que afetam esta tarefa |
+| `## Entregáveis` | Sim | Saídas concretas com itens de teste |
+| `## Testes` | Sim | Casos de teste específicos como checklists |
+| `## Critérios de Sucesso` | Sim | Resultados mensuráveis |
 
-Os arquivos de tarefas devem corresponder ao padrão `\d+_task\.md`:
-- `1_task.md`, `2_task.md`, `10_task.md`, `99_task.md`
-
-Estes nomes são reservados para documentos meta:
-- `prd.md` — Documento de Requisitos de Produto
-- `techspec.md` — Especificação Técnica
-- `tasks.md` — Lista mestre de tarefas
+*Obrigatório se houver ADRs relevantes; omitir a subseção se não houver.

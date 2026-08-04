@@ -32,7 +32,7 @@ Assim que o usuário responder as perguntas de esclarecimento técnico e aprovar
 
 ## Entradas Necessárias
 
-- Nome da funcionalidade identificando o diretório `../ppov-docs/issues/front/<ticket>-<nome>/`.
+- Nome da funcionalidade identificando o diretório `./docs/<ticket>-<nome>/`.
 - Opcional: `prd.md` existente como entrada principal.
 - Opcional: `techspec.md` existente para modo de atualização.
 
@@ -45,16 +45,16 @@ Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
 3. **Criar ADRs** — registrar decisões técnicas significativas (padrão de arquitetura, escolhas de tecnologia, abordagem do modelo de dados)
 4. **Rascunhar o TechSpec** — escrever usando o template canônico de `references/techspec-template.md`
 5. **Revisar com o usuário** — apresentar o rascunho, iterar até aprovação
-6. **Salvar o arquivo** — escrever em `../ppov-docs/issues/front/<ticket>-<nome>/techspec.md`
+6. **Salvar o arquivo** — escrever em `./docs/<ticket>-<nome>/techspec.md`
 
 ## Fluxo de Trabalho
 
 1. Coletar contexto.
    - Derivar o `<ticket>` a partir do prefixo numérico da branch git atual (ex.: branch `1796-feature-x` → ticket `1796`). Se a branch não tiver prefixo numérico, perguntar o número do ticket ao usuário.
-   - Verificar se existe `prd.md` em `../ppov-docs/issues/front/<ticket>-<nome>/`. Se existir, lê-lo como entrada principal.
+   - Verificar se existe `prd.md` em `./docs/<ticket>-<nome>/`. Se existir, lê-lo como entrada principal.
    - Se não existir PRD, pedir ao usuário uma descrição do que precisa de especificação técnica.
-   - Ler ADRs existentes de `../ppov-docs/issues/front/<ticket>-<nome>/adrs/` para entender decisões já tomadas durante a criação do PRD.
-   - Criar o diretório `../ppov-docs/issues/front/<ticket>-<nome>/adrs/` se não existir.
+   - Ler ADRs existentes de `./docs/<ticket>-<nome>/adrs/` para entender decisões já tomadas durante a criação do PRD.
+   - Criar o diretório `./docs/<ticket>-<nome>/adrs/` se não existir.
    - Criar uma chamada de Agent para explorar a base de código em busca de padrões de arquitetura, componentes existentes, dependências e stack tecnológico.
    - Se `techspec.md` já existir, lê-lo e operar em modo de atualização.
 
@@ -71,9 +71,9 @@ Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
 3. Criar ADRs para decisões técnicas significativas.
    - Para cada decisão significativa (padrão de arquitetura escolhido, tecnologia selecionada, abordagem do modelo de dados, etc.):
      - Ler `references/adr-template.md`.
-     - Determinar o próximo número de ADR listando arquivos existentes em `../ppov-docs/issues/front/<ticket>-<nome>/adrs/`.
+     - Determinar o próximo número de ADR listando arquivos existentes em `./docs/<ticket>-<nome>/adrs/`.
      - Preencher o template: o design escolhido como "Decisão", alternativas rejeitadas como "Alternativas Consideradas", e trade-offs como "Consequências". Definir Status como "Aceito" e Data como hoje.
-     - Escrever cada ADR em `../ppov-docs/issues/front/<ticket>-<nome>/adrs/adr-NNN.md` (número sequencial de 3 dígitos com zero à esquerda).
+     - Escrever cada ADR em `./docs/<ticket>-<nome>/adrs/adr-NNN.md` (número sequencial de 3 dígitos com zero à esquerda).
 
 4. Rascunhar o TechSpec.
    - Ler `references/techspec-template.md` e preencher cada seção aplicável.
@@ -81,7 +81,7 @@ Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
    - Aplicar YAGNI rigorosamente: remover qualquer componente, interface ou abstração que não seja estritamente necessário. NÃO propor novos pacotes ou diretórios quando a funcionalidade puder ser implementada adicionando um único arquivo a um pacote existente.
    - Todo objetivo do PRD e história de usuário deve mapear para um componente técnico.
    - Referenciar seções do PRD pelo nome, mas não duplicar contexto de negócio.
-   - Incluir exemplos de código apenas para interfaces principais, limitados a 20 linhas cada. A seção de Interfaces Principais deve conter pelo menos uma definição de interface ou struct Go como bloco de código, mesmo para funcionalidades simples — mostrar o tipo principal do qual outros componentes dependerão.
+   - Incluir exemplos de código apenas para interfaces principais, limitados a 20 linhas cada. A seção de Interfaces Principais deve conter pelo menos uma definição de TypeScript interface/type como bloco de código, mesmo para funcionalidades simples — mostrar o tipo principal do qual outros componentes dependerão.
    - A seção de Sequenciamento de Desenvolvimento DEVE incluir uma Ordem de Build numerada onde cada passo após o primeiro declara explicitamente de quais passos anteriores depende.
    - Prefira voz ativa, omita palavras desnecessárias, use linguagem definitiva e específica em vez de generalidades vagas. Cada frase deve merecer seu lugar.
    - Idioma: **Inglês**. Tom: claro, técnico, consistente com os artefatos existentes do projeto.
@@ -98,7 +98,7 @@ Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
    - Se D: voltar ao passo 2.
 
 6. Salvar o arquivo do TechSpec.
-   - Escrever o documento completo em `../ppov-docs/issues/front/<ticket>-<nome>/techspec.md`.
+   - Escrever o documento completo em `./docs/<ticket>-<nome>/techspec.md`.
    - Confirmar o caminho do arquivo ao usuário.
    - Lembrar ao usuário que o próximo passo é criar tarefas usando `cy-create-tasks` a partir deste TechSpec.
 
@@ -106,19 +106,16 @@ Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
 
 ```dot
 digraph create_techspec {
-    "Coletar contexto (PRD + base de código)" [shape=box];
-    "Fazer perguntas técnicas (uma por vez)" [shape=box];
-    "Criar ADRs para decisões chave" [shape=box];
-    "Rascunhar TechSpec (template canônico)" [shape=box];
+    "Coletar contexto" [shape=box];
+    "Fazer perguntas técnicas" [shape=box];
+    "Criar ADRs" [shape=box];
+    "Rascunhar TechSpec" [shape=box];
     "Usuário aprovou rascunho?" [shape=diamond];
     "Salvar techspec.md" [shape=doublecircle];
-
-    "Coletar contexto (PRD + base de código)" -> "Fazer perguntas técnicas (uma por vez)";
-    "Fazer perguntas técnicas (uma por vez)" -> "Criar ADRs para decisões chave";
-    "Criar ADRs para decisões chave" -> "Rascunhar TechSpec (template canônico)";
-    "Rascunhar TechSpec (template canônico)" -> "Usuário aprovou rascunho?";
-    "Usuário aprovou rascunho?" -> "Rascunhar TechSpec (template canônico)" [label="não, revisar"];
-    "Usuário aprovou rascunho?" -> "Salvar techspec.md" [label="aprovado"];
+    "Coletar contexto" -> "Fazer perguntas técnicas" -> "Criar ADRs" -> "Rascunhar TechSpec";
+    "Rascunhar TechSpec" -> "Usuário aprovou rascunho?";
+    "Usuário aprovou rascunho?" -> "Rascunhar TechSpec" [label="não"];
+    "Usuário aprovou rascunho?" -> "Salvar techspec.md" [label="sim"];
 }
 ```
 
@@ -128,7 +125,7 @@ digraph create_techspec {
 - Se a exploração da base de código revelar padrões arquiteturais conflitantes, documentar ambos e recomendar um com justificativa.
 - Se o usuário rejeitar a proposta de design, incorporar todo o feedback e apresentar uma proposta revisada.
 - Se o diretório alvo não existir, criá-lo.
-- Se estiver operando em modo de atualização, preservar as seções que o usuário não pediu para alterar.
+- Se estiver operando em modo de atualização, preserve as seções que o usuário não pediu para alterar.
 
 ## Princípios Chave
 

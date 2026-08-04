@@ -1,87 +1,93 @@
 ---
 name: frontend-dev
 description: >
-  Use SEMPRE para qualquer tarefa de desenvolvimento frontend neste projeto: Nuxt 3, Vue 3,
-  TypeScript, PrimeVue (auto-import), Tailwind CSS, Pinia e Vitest/@vue/test-utils.
+  Use para implementar código frontend no projeto Next.js 15 + React 19 + Tailwind CSS 4.1.
+  Ative esta skill quando o usuário:
+  - Pedir para criar componente React, página, hook customizado
+  - Pedir para alterar layout, estilização, responsividade
+  - Perguntar sobre padrões de código, estrutura de arquivos ou convenções
+  - Mencionar Server Component, Client Component, 'use client'
+  - Pedir code review de frontend
 
-  GATILHOS OBRIGATÓRIOS — ative esta skill quando o usuário:
-  - Colar, mencionar ou descrever código Vue (.vue), store Pinia, composable ou página Nuxt
-  - Pedir para criar ou modificar componente, tela, formulário, modal ou tabela
-  - Descrever um ticket, user story ou bug de UI/UX no projeto
-  - Mencionar qualquer dessas tecnologias: Nuxt, Vue, PrimeVue, Pinia, Vitest, Tailwind, $fetch
-  - Compartilhar erros de console, build ou TypeScript do projeto front-end
-  - Pedir integração com API (endpoint, DTO, $fetch, tratamento de erro HTTP)
-  - Pedir testes unitários de componentes, stores ou composables
-
-  NÃO ative para: tarefas puramente de backend, infra, banco de dados ou design gráfico sem código.
-
-  Antes de gerar qualquer código, leia OBRIGATORIAMENTE:
-  - `references/frontend.md` — padrões de componente, store, composable e testes
-  - `references/responsividade.md` — padrões de layout responsivo (mobile-first)
-allowed-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
+  Cobre: estrutura de componentes, hooks, SWR, estilização, formulários,
+  ícones, animações, tipagem e checklist de qualidade.
+allowed-tools: [Bash, Read, Write, Edit, Glob, Grep]
 ---
 
-# Frontend Dev Skill
+# Frontend Development Skill
 
-Guia de desenvolvimento para o projeto com Nuxt 3, Vue 3 (Composition API) e PrimeVue.
+Padrões de desenvolvimento frontend para o projeto.
 
 ## Stack
 
-| Camada     | Tecnologias                                                    |
-| ---------- | -------------------------------------------------------------- |
-| Core       | Nuxt 3, Vue 3 (Composition API), TypeScript                    |
-| UI & Style | PrimeVue (auto-import), Tailwind CSS                           |
-| Estado     | Pinia                                                          |
-| Testes     | Vitest, @vue/test-utils, @pinia/testing, MSW para mocks de API |
+- **Next.js 15** App Router (Server + Client Components)
+- **React 19** (functional components, hooks)
+- **TypeScript 5.7** (strict)
+- **Tailwind CSS 4.1** (utility-first, mobile-first)
+- **SWR** (data fetching com `fetcher`/`fetchWithAuth`)
+- **Supabase** (auth, RLS, multi-tenant)
+- **lucide-react** (ícones)
+- **motion** (animações)
+- **react-hook-form** (formulários)
+- **class-variance-authority** (variantes de componente)
+- **clsx + tailwind-merge** (merge de classes)
 
----
+## Estrutura do Projeto
 
-## Passo a passo por tipo de tarefa
+```
+components/        # Componentes React (.tsx)
+hooks/             # Custom hooks (.ts)
+lib/               # Types, Supabase clients, utilities (.ts)
+app/               # Pages, layouts, API routes
+app/api/           # Route handlers
+```
 
-### Nova Feature
+Path alias: `@/*` → raiz do projeto
 
-1. Leia `references/frontend.md` e `references/responsividade.md`
-2. Mapeie as camadas: Store (Pinia) → Componente (UI)
-3. Implemente nessa ordem: Store → Componente
-4. Aplique responsividade mobile-first com Tailwind
-5. Crie testes unitários junto com a implementação (veja skill `test-generator`)
+## Convenções Obrigatórias
 
-### Correção de Bug
+1. **Auth**: `AuthGuard` em root layout, `requireUser()` em API routes
+2. **Multi-tenant**: RLS via `user_id`, nunca enviar `user_id` manualmente
+3. **Graceful degradation**: client retorna `null` quando env vars ausentes (demo mode)
 
-1. Identifique a camada: apresentação (Vue) | estado (Pinia) | dados (Composable/API)
-2. Leia `references/frontend.md` para confirmar o padrão esperado
-3. Proponha a correção com causa raiz descrita
-4. Ajuste os testes afetados
+## Passo a passo: feature nova
 
-### Revisão de código / PR
+1. Ler referências `references/frontend.md` e `references/responsividade.md`
+2. Se consome API → skill `api-integration` para tipos e SWR hooks
+3. Se tabela/CRUD → skill `table-generator` (não monte do zero)
+4. Criar tipos em `lib/` (ou estender `lib/types.ts`)
+5. Criar hooks em `hooks/`
+6. Criar componentes em `components/`
+7. Aplicar responsividade mobile-first
+8. Executar `npm run lint && npm run build`
 
-→ Use a skill `code-review` para checklist completo antes de commitar
+## Passo a passo: alteração
 
----
+1. Mapear impacto: Grep pela referência
+2. Alterar apenas o necessário
+3. Atualizar tipos se contrato mudou
+4. Atualizar hooks se lógica mudou
+5. Atualizar componente se UI mudou
+6. Verificar `npm run lint && npm run build`
+
+## Passo a passo: code review
+
+1. Ler todos os arquivos alterados
+2. Verificar checklist em `references/frontend.md`
+3. Sinalizar desvios
 
 ## Nomenclatura
 
-| Artefato       | Padrão                            | Localização    |
-| -------------- | --------------------------------- | -------------- |
-| Componente Vue | `NomePascalCase.vue`              | `components/`  |
-| Composable     | `useNomeCamelCase.ts`             | `composables/` |
-| Store Pinia    | `useNomeCamelCaseStore.ts`        | `stores/`      |
-| Mock MSW       | `nomeCamelCaseHandlers.ts`        | `mocks/`       |
-| Interface/Type | `INomeInterface.ts`               | `models/`      |
-| Página (rota)  | `nome-da-pagina.vue` (kebab-case) | `pages/`       |
+| Artefato | Convenção |
+|----------|-----------|
+| Componente | `NomeComponente.tsx` (PascalCase) |
+| Hook | `useNome.ts` (camelCase, prefixo `use`) |
+| Tipo | `NomeTipo` (PascalCase, em `lib/types.ts`) |
+| Página | `page.tsx` |
+| Layout | `layout.tsx` |
+| API route | `route.ts` |
 
----
+## Referências
 
-## Referências detalhadas
-
-- **Padrões de código** (componente, store, testes): `references/frontend.md`
-- **Responsividade** (breakpoints, grid, modal, tabela): `references/responsividade.md`
-- **Integração com API** (DTOs, erros HTTP, paginação): use a skill `api-integration`
-- **Testes unitários**: use a skill `test-generator`
-- **Tabelas / listagens** (`DataTable` com modal, filtros, paginação, ordenação): use a skill `table-generator` — padrão completo embutido, com perguntas de refinamento
+- `references/frontend.md` — padrões completos de componente, hooks, SWR, formulários
+- `references/responsividade.md` — breakpoints Tailwind, mobile-first, tabelas, modais

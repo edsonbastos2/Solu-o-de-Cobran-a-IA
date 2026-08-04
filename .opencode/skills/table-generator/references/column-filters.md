@@ -1,170 +1,133 @@
-# Bloco FILTRO POR COLUNA (menu) — opcional
+# Bloco FILTRO POR COLUNA — opcional
 
-Cada coluna ganha um menu de filtro (ícone de funil) com input próprio e botões
-"Limpar Filtro" / "Visualizar". A busca é server-side: o input grava em `search`,
-e "Visualizar" chama `applySearch()` → `store.applySearch()` + `store.index()`.
+Filtro por coluna com input inline abaixo do header. Cada coluna filtrável ganha
+um input de busca que filtra os dados via parâmetros SWR.
 
-> Gerar **apenas** para os campos que o usuário indicou como filtráveis.
+> Este projeto usa filtro server-side via query params no SWR, não filtro client-side.
 
-## Atributos adicionais no `<DataTable>`
+## Busca no header da tabela (simplificado)
 
-```vue
-<DataTable
-  ...
-  v-model:filters="filters"
-  filterDisplay="menu"
-  :globalFilterFields="globalFilterFields"
->
+O padrão mais comum no projeto é um campo de busca global no header (ver `header-filters.md`).
+Para filtro por coluna específica, adicione inputs abaixo de cada header da coluna:
+
+```tsx
+{/* Adicionar inputs de filtro na segunda linha do thead */}
+<thead>
+  <tr className="border-b border-white/10 bg-white/5">
+    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+      Nome
+    </th>
+    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+      Status
+    </th>
+    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider w-24">
+      Ações
+    </th>
+  </tr>
+  <tr className="border-b border-white/10 bg-white/[0.02]">
+    <th className="px-4 py-2">
+      <input
+        type="text"
+        placeholder="Filtrar nome..."
+        value={filterName}
+        onChange={(e) => { setFilterName(e.target.value); setPage(1); }}
+        className="w-full rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+      />
+    </th>
+    <th className="px-4 py-2">
+      <select
+        value={filterStatus}
+        onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
+        className="w-full rounded border border-white/10 bg-white/5 px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+      >
+        <option value="">Todos</option>
+        <option value="active">Ativo</option>
+        <option value="inactive">Inativo</option>
+      </select>
+    </th>
+    <th className="px-4 py-2" />
+  </tr>
+</thead>
 ```
 
-## `<Column>` filtrável — input de TEXTO (`InputText`)
+### Estado e integração com SWR
 
-```vue
-<Column
-  header="{{HeaderColuna}}"
-  filterField="{{field}}"
-  :show-filter-operator="false"
-  :show-add-button="false"
-  :show-filter-match-modes="false"
-  filterMenuStyle="min-width: 15rem; max-width: 15rem"
-  headerClass="p-filter-field"
->
-  <template #body="{ data }">
-    {{ data.{{field}} }}
-  </template>
-  <template #filter>
-    <InputText
-      v-model="search.{{field}}"
-      type="text"
-      class="p-column-filter"
-      data-testid="input-filtro-{{field}}"
-    />
-  </template>
-  <template #filterclear>
-    <Button
-      type="button"
-      outlined
-      @click="clearFilters()"
-      class="w-5/12 font-bold"
-      style="justify-content: center"
-      data-testid="botao-limpar-filtro-{{field}}"
-      >Limpar Filtro</Button
-    >
-  </template>
-  <template #filterapply>
-    <Button
-      type="button"
-      @click="applySearch()"
-      class="w-5/12 font-bold"
-      style="justify-content: center"
-      data-testid="botao-aplicar-filtro-{{field}}"
-      >Visualizar</Button
-    >
-  </template>
-</Column>
+```tsx
+// No componente Table{{Entidade}}.tsx:
+const [filterName, setFilterName] = useState('');
+const [filterStatus, setFilterStatus] = useState('');
+
+// Adaptar o hook SWR para aceitar filtros adicionais:
+const { {{entidades}}, totalPages, isLoading, error, mutate } =
+  use{{Entidade}}({ page, search, filterName, filterStatus });
 ```
 
-## Variações do input (trocar apenas o `<template #filter>`)
+### Hook SWR com filtros por coluna
 
-### Seleção única (`Select`)
-
-```vue
-<template #filter>
-  <Select
-    v-model="search.{{field}}"
-    :options="{{opcoes}}"
-    optionLabel="selectLabel"
-    optionValue="selectValue"
-    placeholder="Selecione"
-    :filter="true"
-    showClear
-    class="p-column-filter w-full text-color bg-surface-0 dark:bg-surface-900 border border-solid border-surface rounded-border outline-0"
-    data-testid="select-filtro-{{field}}"
-    @change="applySearch()"
-  />
-</template>
-```
-
-### Seleção múltipla (`MultiSelect`)
-
-```vue
-<template #filter>
-  <MultiSelect
-    v-model="search.{{field}}"
-    :options="{{opcoes}}"
-    optionLabel="descricao"
-    optionValue="uuid"
-    :filter="true"
-    class="p-column-filter"
-    inputClass="w-full text-color bg-surface-0 dark:bg-surface-900 border border-solid border-surface rounded-border outline-none"
-  />
-</template>
-```
-
-## Script — estado e métodos de filtro
-
-```ts
-import {
-  DataTableFilterMetaData,
-  DataTableOperatorFilterMetaData
-} from 'primevue/datatable'
-import { FilterOperator, FilterMatchMode } from '@primevue/core/api'
-
-// Data
-const search = ref<{{Model}}>({
-  // um campo por filtro, com valor inicial vazio:
-  {{field}}: ''
-} as {{Model}})
-
-const globalFilterFields = ref<string[]>([
-  '{{field}}' // listar todos os filterField das colunas filtráveis
-])
-
-const filters = ref<{
-  [key: string]:
-    | string
-    | DataTableFilterMetaData
-    | DataTableOperatorFilterMetaData
-}>()
-
-// Methods
-const initFilters = () => {
-  const filterFields: Record<string, any> = []
-  globalFilterFields.value.forEach((field) => {
-    filterFields[field] = {
-      operator: FilterOperator.AND,
-      constraints: [{ value: null, matchMode: FilterMatchMode.STARTS_WITH }]
-    }
-  })
-  filters.value = { ...filterFields }
+```typescript
+// hooks/use{{Entidade}}.ts
+interface Use{{Entidade}}Params {
+  page?: number;
+  search?: string;
+  filterName?: string;
+  filterStatus?: string;
 }
 
-const clearFilters = async () => {
-  search.value = { {{field}}: '' } as {{Model}} // resetar todos os campos de busca
-  await applySearch()
-}
+export function use{{Entidade}}({
+  page = 1,
+  search = '',
+  filterName = '',
+  filterStatus = ''
+}: Use{{Entidade}}Params = {}) {
+  const params = useMemo(() => {
+    const p = new URLSearchParams({
+      page: String(page),
+      limit: '10'
+    });
+    if (search.trim()) p.set('search', search.trim());
+    if (filterName.trim()) p.set('name', filterName.trim());
+    if (filterStatus.trim()) p.set('status', filterStatus);
+    return p.toString();
+  }, [page, search, filterName, filterStatus]);
 
-const applySearch = async () => {
-  {{entidade}}Store.applySearch(search.value)
-  await {{entidade}}Store.index()
+  const { data, error, isLoading, mutate } = useSWR<{
+    data: {{Tipo}}[];
+    totalPages: number;
+    total: number;
+  }>(
+    `{{endpoint}}?${params}`,
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+
+  return {
+    {{entidades}}: data?.data || [],
+    totalPages: data?.totalPages || 1,
+    total: data?.total || 0,
+    error,
+    isLoading,
+    mutate
+  };
 }
 ```
 
-E no `onMounted`, antes de `index()`:
+### Limpar todos os filtros
 
-```ts
-onMounted(async () => {
-  await nextTick()
-  initFilters()
-  await {{entidade}}Store.index()
-})
+```tsx
+const clearFilters = () => {
+  setFilterName('');
+  setFilterStatus('');
+  setPage(1);
+};
 ```
-
-Adicionar ao `defineExpose`: `filters, search, globalFilterFields, applySearch, clearFilters`.
 
 ## Notas
 
-- `filterField` deve casar com a chave usada no `search` e no `globalFilterFields`.
-- `headerClass="p-filter-field"` destaca visualmente as colunas com filtro.
-- `clearFilters()` reseta **todos** os campos (padrão do projeto) — se o usuário quiser
-  limpar campo a campo, use um `switch (filterField)` como em `header-filters.md`.
+- Filtros são **server-side**: o parâmetro é enviado na query string, a API route filtra no Supabase
+- Cada mudança de filtro reseta `page` para 1 (evita ficar em página vazia)
+- O hook SWR inclui os filtros como dependências de `useMemo` para revalidar automaticamente
+- Para filtro por texto, a API usa `ilike` com `%term%`
+- Para filtro por select, a API usa `eq('status', value)`
+- Inputs usam `text-xs` e padding reduzido (`px-2 py-1`) para caberem na linha de header
+- O `<select>` nativo do HTML recebe classes Tailwind para consistência visual
+- Ver `app/api/cases/route.ts` como exemplo de implementação de filtros na API route

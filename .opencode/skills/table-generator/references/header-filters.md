@@ -1,149 +1,161 @@
 # Bloco FILTRO NO HEADER (busca) — opcional
 
-Formulário de busca no `#header` do `DataTable` (acima das linhas), com vários campos
-lado a lado e os botões "Limpar Filtros" / "Visualizar". Útil quando a busca combina
-vários critérios de uma vez (ex.: mês + ano + descrição). Server-side, igual ao filtro
-de coluna: grava em `search` e dispara `applySearch()`.
+Formulário de busca acima da tabela, com campo de texto e/ou selects lado a lado.
+Busca server-side: o valor é enviado como query param e a API route filtra no Supabase.
 
 > Gerar **apenas** os campos que o usuário indicou para o formulário de busca.
 
-## `<template #header>` dentro do `<DataTable>`
+## Busca simples (texto único)
 
-```vue
-<template #header>
-  <div class="formgrid grid grid-cols-12 gap-4 gap-y-1">
-    <!-- Campo numérico (ex.: Mês) -->
-    <div class="flex flex-col field col-span-12 md:col-span-1 lg:col-span-1">
-      <label class="text-muted-color font-normal" for="search-{{field}}"
-        >{{HeaderCampo}}</label
-      >
-      <InputNumber
-        id="search-{{field}}"
-        v-model="search.{{field}}"
-        data-testid="input-busca-{{field}}"
-        inputId="minmax-buttons"
-        mode="decimal"
-        showButtons
-        allow-empty
-        :min="1"
-        :max="12"
-        fluid
-      />
-    </div>
-
-    <!-- Campo de máscara (ex.: Ano) -->
-    <div class="flex flex-col field col-span-12 md:col-span-2 lg:col-span-2">
-      <label class="text-muted-color font-normal" for="search-{{field}}"
-        >{{HeaderCampo}}</label
-      >
-      <InputMask
-        id="search-{{field}}"
-        v-model="search.{{field}}"
-        data-testid="input-busca-{{field}}"
-        mask="9999"
-        slotChar="yyyy"
-        autoClear
-        class="p-column-filter w-full text-color bg-surface-0 dark:bg-surface-900 border border-solid border-surface rounded-border outline-0"
-      />
-    </div>
-
-    <!-- Campo de texto -->
-    <div class="flex flex-col field col-span-12 md:col-span-3 lg:col-span-3">
-      <label class="text-muted-color font-normal" for="search-{{field}}"
-        >{{HeaderCampo}}</label
-      >
-      <InputText
-        id="search-{{field}}"
-        v-model="search.{{field}}"
-        data-testid="input-busca-{{field}}"
+```tsx
+{/* No cabeçalho, entre o título e a tabela */}
+<div className="flex flex-col sm:flex-row gap-3 px-6 py-3 border-b border-white/10">
+  <div className="flex-1">
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+      <input
         type="text"
-        class="p-column-filter"
-      />
-    </div>
-
-    <!-- Botão Limpar -->
-    <div class="flex flex-col field col-span-6 md:col-span-3 lg:col-span-2">
-      <Button
-        data-testid="btn-limpar-busca-{{entidade}}"
-        outlined
-        type="button"
-        icon="pi pi-filter-slash"
-        label="Limpar Filtros"
-        class="w-full mt-5 font-bold whitespace-nowrap"
-        @click="clearAllFilters()"
-      />
-    </div>
-
-    <!-- Botão Visualizar -->
-    <div class="flex flex-col field col-span-6 md:col-span-3 lg:col-span-2">
-      <Button
-        data-testid="btn-buscar-{{entidade}}"
-        outlined
-        type="button"
-        label="Visualizar"
-        class="w-full mt-5 font-bold whitespace-nowrap"
-        @click="applySearch()"
+        placeholder="Buscar por nome, telefone ou documento..."
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+        className="w-full rounded-lg border border-white/10 bg-white/5 pl-10 pr-4 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
       />
     </div>
   </div>
-</template>
+  {search && (
+    <button
+      onClick={() => { setSearch(''); setPage(1); }}
+      className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+    >
+      Limpar
+    </button>
+  )}
+</div>
 ```
 
-### Variação: campo de data (`DatePicker`)
+## Busca com múltiplos campos
 
-```vue
-<DatePicker
-  v-model="afterDate"
-  data-testid="input-busca-data"
-  dateFormat="dd/mm/yy"
-  inputClass="w-full bg-surface-0 dark:bg-surface-900 btn-calendar"
-  manualInput
-/>
+```tsx
+<div className="px-6 py-3 border-b border-white/10">
+  <div className="flex flex-col sm:flex-row gap-3">
+    {/* Campo de texto */}
+    <div className="flex-1">
+      <label className="block text-xs text-slate-500 mb-1">Nome</label>
+      <input
+        type="text"
+        placeholder="Buscar por nome..."
+        value={searchName}
+        onChange={(e) => { setSearchName(e.target.value); setPage(1); }}
+        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+      />
+    </div>
+
+    {/* Select de status */}
+    <div>
+      <label className="block text-xs text-slate-500 mb-1">Status</label>
+      <select
+        value={searchStatus}
+        onChange={(e) => { setSearchStatus(e.target.value); setPage(1); }}
+        className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+      >
+        <option value="">Todos</option>
+        <option value="not_started">Não iniciado</option>
+        <option value="in_negotiation">Em negociação</option>
+        <option value="closed">Encerrado</option>
+      </select>
+    </div>
+
+    {/* Campo de data */}
+    <div>
+      <label className="block text-xs text-slate-500 mb-1">Vencimento</label>
+      <input
+        type="date"
+        value={searchDate}
+        onChange={(e) => { setSearchDate(e.target.value); setPage(1); }}
+        className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+      />
+    </div>
+
+    {/* Botão limpar filtros */}
+    <div className="flex items-end">
+      <button
+        onClick={clearFilters}
+        className="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors whitespace-nowrap"
+      >
+        Limpar Filtros
+      </button>
+    </div>
+  </div>
+</div>
 ```
 
-```ts
-import {
-  formatDateUSAInternational,
-  getDateWithoutTimeIso
-} from '~~/models/GeneralFunctions'
+### Estado e métodos
 
-const afterDate = computed({
-  get() {
-    return search.value.data
-      ? getDateWithoutTimeIso(search.value.data as string)
-      : undefined
-  },
-  set(newValue) {
-    search.value.data = newValue ? formatDateUSAInternational(newValue) : ''
-  }
-})
+```tsx
+const [searchName, setSearchName] = useState('');
+const [searchStatus, setSearchStatus] = useState('');
+const [searchDate, setSearchDate] = useState('');
+
+const clearFilters = () => {
+  setSearchName('');
+  setSearchStatus('');
+  setSearchDate('');
+  setPage(1);
+};
 ```
 
-## Script — estado e métodos
+### Adaptação do hook SWR
 
-```ts
-// Data
-const search = ref({
-  {{field}}: '' // um campo por critério de busca
-} as Search{{Entidade}})
-
-// Methods
-const applySearch = async () => {
-  {{entidade}}Store.applySearch(search.value)
-  await {{entidade}}Store.index()
+```typescript
+interface Use{{Entidade}}Params {
+  page?: number;
+  searchName?: string;
+  searchStatus?: string;
+  searchDate?: string;
 }
 
-const clearAllFilters = async () => {
-  search.value = { {{field}}: '' } as Search{{Entidade}}
-  await applySearch()
+export function use{{Entidade}}({
+  page = 1,
+  searchName = '',
+  searchStatus = '',
+  searchDate = ''
+}: Use{{Entidade}}Params = {}) {
+  const params = useMemo(() => {
+    const p = new URLSearchParams({ page: String(page), limit: '10' });
+    if (searchName.trim()) p.set('name', searchName.trim());
+    if (searchStatus) p.set('status', searchStatus);
+    if (searchDate) p.set('date', searchDate);
+    return p.toString();
+  }, [page, searchName, searchStatus, searchDate]);
+
+  const { data, error, isLoading, mutate } = useSWR<{
+    data: {{Tipo}}[];
+    totalPages: number;
+    total: number;
+  }>(
+    `{{endpoint}}?${params}`,
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+
+  return {
+    {{entidades}}: data?.data || [],
+    totalPages: data?.totalPages || 1,
+    total: data?.total || 0,
+    error,
+    isLoading,
+    mutate
+  };
 }
 ```
-
-Adicionar ao `defineExpose`: `search, applySearch, clearAllFilters`.
 
 ## Notas
 
-- O grid usa `formgrid grid grid-cols-12` (PrimeFlex/Tailwind) — ajuste `col-span-*` por
-  campo para o layout responsivo (mobile-first). `mt-5` alinha os botões à base dos inputs.
-- Crie uma interface `Search{{Entidade}}` no `models/` com os campos de busca.
-- O filtro no header **pode** coexistir com paginação/ordenação — só somar os atributos.
+- O grid usa `flex-col sm:flex-row` para empilhar em mobile e alinhar em desktop
+- Cada mudança de filtro reseta `page` para 1
+- O hook SWR usa `useMemo` para reconstruir params somente quando as dependências mudam
+- O botão "Limpar Filtros" reseta todos os campos de busca
+- A API route deve ler os query params correspondentes (ver `app/api/cases/route.ts`)
+- O filtro no header **pode** coexistir com paginação
+- Ícone de busca (`Search`) vem do `lucide-react`
+- O botão "Limpar" individual (busca simples) só aparece quando há texto digitado

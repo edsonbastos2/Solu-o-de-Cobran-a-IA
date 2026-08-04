@@ -1,215 +1,178 @@
-# Bloco PAGINAÇÃO + ORDENAÇÃO + SELEÇÃO — opcional
+# Bloco PAGINAÇÃO — opcional
 
-Acrescenta paginação server-side (`lazy`), ordenação por coluna (`@sort`) e, opcionalmente,
-seleção múltipla com "Remover selecionados" / "Remover todos".
+Acrescenta paginação server-side usando o componente `Pagination` do projeto
+(`components/pagination.tsx`). A API route já suporta `page` e `limit` como query params.
 
-## Atributos no `<DataTable>`
+## Componente Pagination do projeto
 
-```vue
-<DataTable
-  :value="list{{Entidade}}"
-  data-testid="tabela-{{entidade}}"
-  data-key="uuid"
-  class="p-datatable-{{entidade}} mt-0"
-  :rows="5"
-  :rowHover="true"
-  :lazy="true"
-  :loading="loading"
-  :total-records="quantity"
-  :rowsPerPageOptions="[5, 10, 15, 20]"
-  responsiveLayout="scroll"
-  :first="firstItemInPage"
-  removableSort
-  @sort="onSort($event)"
-  @page="onPage($event)"
-  paginator
-  scrollable
-  scrollHeight="400px"
-  resizableColumns
-  showGridlines
-  stripedRows
->
-```
+```tsx
+// components/pagination.tsx — já existe no projeto, reutilizar
+import { Pagination } from '@/components/pagination';
 
-### Ordenação por coluna
-
-Adicione `sortable` e um `field` (chave de ordenação enviada ao backend) em cada coluna ordenável:
-
-```vue
-<Column header="{{HeaderColuna}}" field="{{FIELD_ORDENACAO}}" sortable>
-  <template #body="{ data }">{{ data.{{field}} }}</template>
-</Column>
-```
-
-### Seleção múltipla (opcional)
-
-Atributos extra no `<DataTable>`:
-
-```vue
-<DataTable
-  ...
-  selection-mode="multiple"
-  :metaKeySelection="metaKey"
-  v-model:selection="selected{{Entidade}}"
-  :selectAll="selectAll"
-  @select-all-change="onSelectAllChange($event)"
-  @row-select="onRowSelect($event)"
-  @row-unselect="onRowUnselect($event)"
-  @row-unselect-all="onRowUnselectAll($event)"
->
-```
-
-Coluna de checkbox (primeira do `DataTable`):
-
-```vue
-<Column selectionMode="multiple" headerStyle="width: 2rem"></Column>
-```
-
-Botões no `#subtitle` do `Card`:
-
-```vue
-<Button
-  data-testid="btn-remover-selecionados-{{entidade}}"
-  label="Remover selecionados"
-  outlined
-  icon="pi pi-trash"
-  class="p-button-danger mr-2"
-  @click="deleteSelected{{Entidade}}()"
-/>
-<Button
-  data-testid="btn-remover-todos-{{entidade}}"
-  label="Remover todos"
-  outlined
-  icon="pi pi-trash"
-  class="p-button-danger mr-2"
-  @click="deleteAll{{Entidade}}()"
+<Pagination
+  currentPage={page}
+  totalPages={totalPages}
+  onPageChange={setPage}
 />
 ```
 
-## Script — paginação e ordenação
+## Integração no componente de tabela
 
-```ts
-import {
-  DataTablePageEvent,
-  DataTableSortEvent
-} from 'primevue/datatable'
+```tsx
+'use client';
 
-const onPage = async ({ page, rows }: DataTablePageEvent) => {
-  await {{entidade}}Store.index({ page, size: rows, unpaged: false })
-}
+import { useState } from 'react';
+import { use{{Entidade}} } from '@/hooks/use{{Entidade}}';
+import { Pagination } from '@/components/pagination';
 
-const onSort = async ({ rows, sortField, sortOrder }: DataTableSortEvent) => {
-  const order = sortOrder === 1 ? 'ASC' : sortOrder === -1 ? 'DESC' : ''
-  const field = sortField!
-  {{entidade}}Store.applySort({ tipoOrdenacao: order, ordenacao: field })
-  await {{entidade}}Store.index({ page: 0, size: rows, unpaged: false })
+export function Table{{Entidade}}() {
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+
+  const { {{entidades}}, totalPages, isLoading, error, mutate } =
+    use{{Entidade}}({ page, search });
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-[#111318] overflow-hidden">
+      {/* cabeçalho + busca + tabela */}
+      {totalPages > 1 && (
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
+      )}
+    </div>
+  );
 }
 ```
 
-## Script — seleção múltipla (opcional)
+## Hook SWR com paginação
 
-```ts
-import {
-  DataTableRowSelectEvent,
-  DataTableSelectAllChangeEvent
-} from 'primevue/datatable'
+```typescript
+// hooks/use{{Entidade}}.ts
+import useSWR from 'swr';
+import { useMemo } from 'react';
+import { fetcher } from '@/lib/api';
+import { {{Tipo}} } from '@/lib/types';
 
-// Data
-const selected{{Entidade}} = ref([] as {{Model}}[])
-const selectAll = ref(false)
-const metaKey = ref(true)
+export function use{{Entidade}}({ page = 1, search = '' } = {}) {
+  const params = useMemo(() => {
+    const p = new URLSearchParams({
+      page: String(page),
+      limit: '10'
+    });
+    if (search.trim()) p.set('search', search.trim());
+    return p.toString();
+  }, [page, search]);
 
-// Methods
-const deleteSelected{{Entidade}} = async () => {
-  const uuids = selected{{Entidade}}.value.map((t) => t.uuid!)
-  if (!uuids.length) {
-    toast.add({
-      severity: 'error',
-      summary: 'Remover Selecionados',
-      detail: 'Necessário selecionar algum item antes',
-      life: 3000
-    })
-    return
+  const { data, error, isLoading, mutate } = useSWR<{
+    data: {{Tipo}}[];
+    totalPages: number;
+    total: number;
+    page: number;
+  }>(
+    `{{endpoint}}?${params}`,
+    fetcher,
+    { revalidateOnFocus: false }
+  );
+
+  return {
+    {{entidades}}: data?.data || [],
+    totalPages: data?.totalPages || 1,
+    total: data?.total || 0,
+    error,
+    isLoading,
+    mutate
+  };
+}
+```
+
+## API Route com paginação
+
+```typescript
+// app/api/.../route.ts (exemplo do padrão)
+export async function GET(req: NextRequest) {
+  // ... autenticação e autorização
+  const { searchParams } = new URL(req.url);
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '10')));
+  const offset = (page - 1) * limit;
+
+  // query com .range() do Supabase
+  const { data, count, error } = await supabase
+    .from('table_name')
+    .select('*', { count: 'exact' })
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  confirm.require({
-    message: 'Tem certeza que quer remover todos os itens selecionados?',
-    header: 'Confirmação',
-    icon: 'pi pi-info-circle',
-    acceptClass: 'p-button-danger',
-    accept: async () => {
-      nuxt.callHook('page:start')
-      const status = await {{entidade}}Store.delSelected(uuids)
-      nuxt.callHook('page:finish')
-      if (status === 200) {
-        toast.add({
-          severity: 'success',
-          summary: 'Confirmado',
-          detail: 'Os itens selecionados foram removidos',
-          life: 3000
-        })
-        selectAll.value = false
-        selected{{Entidade}}.value = []
-      }
-    }
-  })
-}
 
-const deleteAll{{Entidade}} = async () => {
-  confirm.require({
-    message: 'Tem certeza que quer remover todos os itens?',
-    header: 'Confirmação',
-    icon: 'pi pi-info-circle',
-    acceptClass: 'p-button-danger',
-    accept: async () => {
-      nuxt.callHook('page:start')
-      const status = await {{entidade}}Store.delAll()
-      nuxt.callHook('page:finish')
-      if (status === 200) {
-        toast.add({
-          severity: 'success',
-          summary: 'Confirmado',
-          detail: 'Todos os itens foram removidos',
-          life: 3000
-        })
-        selectAll.value = false
-      }
-    }
-  })
+  return NextResponse.json({
+    data: data || [],
+    totalPages: Math.ceil((count || 0) / limit) || 1,
+    total: count || 0,
+    page
+  });
 }
+```
 
-const onSelectAllChange = async (event: DataTableSelectAllChangeEvent) => {
-  if (event.checked) {
-    await {{entidade}}Store.selectAll()
-    selectAll.value = true
-    selected{{Entidade}}.value = [...{{entidade}}Store.${{entidades}}FromSelectAll]
+## Ordenação server-side (opcional)
+
+Se necessário ordenação server-side por clique no header da coluna:
+
+```tsx
+// No componente: clique no <th> alterna ordenação
+const [sortField, setSortField] = useState('created_at');
+const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+const handleSort = (field: string) => {
+  if (sortField === field) {
+    setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
   } else {
-    selectAll.value = false
-    selected{{Entidade}}.value = []
+    setSortField(field);
+    setSortOrder('asc');
   }
-}
+  setPage(1);
+};
 
-const onRowSelect = (_event: DataTableRowSelectEvent) => {
-  selectAll.value = selected{{Entidade}}.value?.length === quantity.value
-}
-
-const onRowUnselect = () => {
-  selectAll.value = false
-}
-
-const onRowUnselectAll = () => {
-  selectAll.value = false
-  selected{{Entidade}}.value = []
-}
+// No thead:
+<th
+  onClick={() => handleSort('name')}
+  className="cursor-pointer hover:text-white transition-colors select-none"
+>
+  Nome
+  {sortField === 'name' && (
+    <span className="ml-1">{sortOrder === 'asc' ? '\u2191' : '\u2193'}</span>
+  )}
+</th>
 ```
 
-Adicionar ao `defineExpose`: `onPage, onSort` (+ `selected{{Entidade}}, deleteSelected{{Entidade}},
-deleteAll{{Entidade}}, onSelectAllChange, onRowSelect, onRowUnselect, onRowUnselectAll` se houver seleção).
+O hook SWR e a API route devem aceitar `sortField`/`sortOrder`:
+
+```typescript
+// No hook:
+if (sortField) p.set('sortField', sortField);
+if (sortOrder) p.set('sortOrder', sortOrder);
+
+// Na API route:
+const sortField = (searchParams.get('sortField') || 'created_at').slice(0, 50);
+const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
+
+const { data } = await query.order(sortField, { ascending: sortOrder === 'asc' });
+```
 
 ## Notas
 
-- A store precisa de `applySort({ tipoOrdenacao, ordenacao })` e, para seleção,
-  `selectAll()` + getter `${{entidades}}FromSelectAll` + `delSelected(uuids)` / `delAll()`.
-  Delegue à skill `api-integration` se a store ainda não tiver esses métodos.
-- `field` na coluna é a **chave de ordenação do backend** (geralmente UPPER_SNAKE_CASE);
-  `filterField`/`v-model` continuam usando a chave do dado (camelCase).
-- Sem seleção: omita os atributos de seleção, a `<Column selectionMode>` e os botões de remover em massa.
+- O componente `Pagination` já existe em `components/pagination.tsx` — **usá-lo, não recriá-lo**
+- A paginação é sempre server-side: `page` e `limit` vão como query params
+- `SWR` revalida automaticamente quando a key (URL) muda (quando `page` ou `search` mudam)
+- O `useMemo` reconstrói a URL de params de forma eficiente (só quando as deps mudam)
+- `revalidateOnFocus: false` evita refetch ao trocar de aba (adequado para listas)
+- Mostrar `Pagination` apenas quando `totalPages > 1`
+- O `limit` default é 10, máximo é 100 (clamping na API route)
+- Ordenação visual no header: seta para cima (asc) e para baixo (desc)
+- `select-none` no header ordenável evita selecionar texto ao clicar

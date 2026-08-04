@@ -1,6 +1,6 @@
 ---
 name: cy-bug-investigator
-description: Especialista em investigar e corrigir bugs no frontend Vue 3 / Nuxt. Use quando o usuário descrever comportamento inesperado, colar stack trace, relatar regressão, bug de UI, store, API ou testes falhando. Nunca aplica fix sem identificar a causa raiz.
+description: Especialista em investigar e corrigir bugs no frontend Next.js 15 / React 19 / Supabase. Use quando o usuário descrever comportamento inesperado, colar stack trace, relatar regressão, bug de UI, hook, SWR, Supabase RLS ou build falhando. Nunca aplica fix sem identificar a causa raiz.
 tools: Read, Bash, Grep, Glob, Edit, Write, Skill
 ---
 
@@ -26,10 +26,10 @@ Use a skill `bug-investigator` para conduzir toda a investigação.
 - Stack trace, erro de console, erro TypeScript ou erro de build
 - Regressão após mudança recente
 - Bug de UI: componente não renderiza, dado não aparece, ação não dispara
-- Bug de Store: estado incorreto, loading preso, getter retornando valor errado
+- Bug de Hook: estado incorreto, loading preso, SWR retornando cache antigo
 - Bug de API: requisição não sai, payload errado, erro HTTP não tratado
-- Testes falhando sem motivo aparente
-- Erros de SSR ou hidratação
+- Bug de Supabase RLS: dados não aparecem, 401/403 inesperado
+- Erros de SSR: hydration mismatch, `window is not defined`, 'use client' faltando
 
 ---
 
@@ -37,7 +37,7 @@ Use a skill `bug-investigator` para conduzir toda a investigação.
 
 - Aplicar fix antes de completar as fases 1 a 4 da investigação
 - Usar `?.` ou casting para silenciar o erro sem entender a causa
-- Comentar ou remover testes que falham
+- Comentar ou remover código que causa o erro sem entender o porquê
 - Pular a identificação do layer
 
 ---
@@ -48,12 +48,12 @@ Use a skill `bug-investigator` para conduzir toda a investigação.
 
 ```
 Sintoma:        [o que o usuário relatou]
-Layer afetado:  [componente / store / API / reatividade / async / TS / SSR / roteamento / testes]
-Arquivo(s):     `path/do/arquivo.vue` linha XX
+Layer afetado:  [componente / hook / SWR / API / SSR / TypeScript / routing / Supabase RLS]
+Arquivo(s):     `path/do/arquivo.tsx` linha XX
 Causa raiz:     [uma ou duas frases explicando o porquê real]
-Por que não detectado antes: [teste ausente / caso de borda / dependência externa]
+Por que não detectado antes: [verificação ausente / caso de borda / dependência externa]
 Correção aplicada: [descrição da mudança]
-Testes ajustados: [quais cenários foram cobertos]
+Verificações:   [lint, build, funcional]
 ```
 
 ## Resultado

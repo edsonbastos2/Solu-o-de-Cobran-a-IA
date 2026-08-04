@@ -1,155 +1,90 @@
 ---
 name: table-generator
 description: >
-  Gerador determinístico do padrão de Tabela (listagem) do projeto usando o componente
-  PrimeVue `DataTable` dentro de um `Card`. Ative esta skill quando o usuário:
-  - Pedir para criar uma tabela, listagem, grid, "tela de listagem" ou CRUD de listagem
-  - Mencionar `DataTable`, `Column`, "tabela com filtro", "tabela com paginação" ou "tabela com modal"
-  - Pedir um componente `organisms/TableXxx` (com ou sem `templates/ModalXxx`)
-  - Descrever uma tela que lista registros com colunas, filtros, ordenação e ações (editar/remover)
+  Gera componentes de tabela/CRUD para o projeto Next.js 15 + React 19 + Tailwind CSS 4.1.
+  Use quando a tarefa for listagem tabular — tabela, grid ou CRUD com ou sem modal,
+  filtros e paginação. Não use para formulários, dashboards ou páginas sem tabela.
 
-  NÃO ative para: gráficos, árvores (TreeTable), formulários isolados sem listagem,
-  ou telas que não sejam de listagem tabular.
-
-  Esta skill é INTERATIVA e roda no FLUXO PRINCIPAL: faz perguntas de refinamento
-  (modal? filtros? paginação/ordenação?) ANTES de gerar o código. Todo o padrão está
-  embutido em `references/` — não depende de nenhum componente do projeto.
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - Bash
+  Stack: Next.js 15, React 19, TypeScript 5.7, Tailwind CSS 4.1, SWR.
+allowed-tools: [Bash, Read, Write, Edit, Glob, Grep]
 ---
 
-# Table Generator
+# Table Generator Skill
 
-Gera o **padrão de Tabela** do projeto (listagem com `DataTable` dentro de um `Card`),
-montando o componente a partir de blocos opcionais (modal, filtros, paginação/ordenação,
-seleção). É **determinístico**: as mesmas respostas produzem sempre a mesma estrutura.
+Gera tabelas CRUD completas usando SWR + Tailwind CSS.
 
-> **Autocontido:** todo o código-base vive em `references/`. Esta skill **não lê nem
-> depende** de `TableConnectionSettings`, `TableRevenueHistory`, `TableEmployee` ou
-> `ModalConnectionSetting` — se esses componentes mudarem no futuro, o padrão aqui
-> continua válido. Ao gerar, copie dos arquivos em `references/`, nunca dos componentes vivos.
+## Perguntas de Refinimento (uma por vez)
 
----
+Antes de gerar, pergunte ao usuário nesta ordem:
 
-## Onde roda
+1. "A tabela terá modal de criação/edição? A) Sim, modal completo B) Não, apenas listagem"
+2. "Precisa de filtros? A) Filtros no cabeçalho (search, selects) B) Filtros nas colunas C) Ambos D) Nenhum"
+3. "Paginação e ordenação? A) Server-side com componente Pagination B) Apenas paginação C) Nenhum"
 
-Sempre no **fluxo principal** (precisa perguntar ao usuário). Quando acionada pelo
-`feature-orchestrator`, é o agente **`cy-frontend-developer`** que a invoca para a etapa
-de Componente — mas as perguntas de refinamento devem ser respondidas pelo usuário no
-fluxo principal antes de delegar (o orquestrador coleta as respostas e as repassa na spec).
+## Arquivos Gerados
 
----
+| Perguntas | Arquivos |
+|-----------|----------|
+| Base (sempre) | `components/nome-tabela.tsx`, `hooks/useNome.ts` |
+| Modal (A) | `components/nome-modal.tsx` |
+| Filtros coluna (B ou C) | `components/nome-filters.tsx` |
+| Filtros header (A ou C) | `components/nome-header.tsx` |
 
-## Passo 1 — Ler o padrão (obrigatório antes de gerar)
+## Padrão Base
 
-Leia os blocos que serão usados, conforme as respostas do Passo 2:
+```tsx
+// components/nome-tabela.tsx
+'use client';
 
-| Bloco | Arquivo | Quando ler |
-| --- | --- | --- |
-| Base (sempre) | `references/table-base.md` | Sempre |
-| Modal criar/editar | `references/modal.md` | Se houver modal |
-| Filtro por coluna (menu) | `references/column-filters.md` | Se filtro = coluna |
-| Filtro no header (busca) | `references/header-filters.md` | Se filtro = header |
-| Paginação + ordenação + seleção | `references/pagination-sorting.md` | Se houver paginação/ordenação |
-| Testes | `references/tests.md` | Sempre (gera o `.spec.ts`) |
+import useSWR from 'swr';
+import { fetcher } from '@/lib/api';
 
----
+export default function NomeTabela() {
+  const { data, error, isLoading } = useSWR('/api/nome', fetcher);
 
-## Passo 2 — Perguntas de refinamento (use `AskUserQuestion`)
+  if (isLoading) return <div>Carregando...</div>;
+  if (error) return <div>Erro: {error.message}</div>;
 
-Faça **todas** as perguntas abaixo antes de escrever qualquer arquivo. Use uma única
-chamada `AskUserQuestion` com múltiplas perguntas quando possível.
-
-1. **Identidade** (texto livre, pergunte no chat se faltar):
-   - Nome do domínio em PascalCase (ex.: `CargoRH`) → vira `Table{{Entidade}}`
-   - Título exibido no `Card` (ex.: "Cargos")
-   - Endpoint base da API (ex.: `/cargos`) e se já existe `store`/`model` ou precisam ser criados
-   - Lista de colunas: para cada uma → `header` (label PT), `field` (chave do dado),
-     tipo (`texto` | `numero` | `moeda` | `data` | `select` | `multiselect`)
-
-2. **Modal?** — "Vai existir modal de criação/edição?"
-   - `Sim` → gerar `templates/Modal{{Entidade}}/Modal{{Entidade}}.vue` (bloco `modal.md`)
-     + botão "Adicionar" + coluna de Ações com editar.
-   - `Não` → sem modal; a coluna de Ações fica opcional (pergunte se ainda quer remover).
-
-3. **Filtros?** — "Como será o filtro?" (pode ser nenhum):
-   - `Nenhum`
-   - `Filtro por coluna (menu)` → bloco `column-filters.md`. **Pergunte quais campos**
-     terão filtro e o tipo de input de cada um (texto = `InputText`, select = `Select`,
-     múltiplos = `MultiSelect`).
-   - `Filtro no header (busca)` → bloco `header-filters.md`. **Pergunte quais campos**
-     entram no formulário de busca do header e o tipo (`InputNumber`, `InputMask`,
-     `InputText`, `DatePicker`).
-   - (Ambos podem coexistir se o usuário pedir.)
-
-4. **Paginação e ordenação?** — "Vai existir paginação e ordenação?"
-   - `Sim` → bloco `pagination-sorting.md` (lazy + `paginator` + `:rows` + `removableSort`
-     + `sortable` nas colunas + `@sort`/`@page`). Pergunte também se há **seleção múltipla**
-     (checkbox + "Remover selecionados" / "Remover todos").
-   - `Não` → tabela simples sem `paginator`/`lazy`.
-
----
-
-## Passo 3 — Gerar os arquivos
-
-Componha o componente a partir dos blocos selecionados, substituindo os placeholders:
-
-| Placeholder | Significado | Exemplo |
-| --- | --- | --- |
-| `{{Entidade}}` | PascalCase | `CargoRH` |
-| `{{entidade}}` | camelCase | `cargoRh` |
-| `{{entidades}}` | camelCase plural | `cargosRh` |
-| `{{Titulo}}` | título do Card | `Cargos` |
-| `{{store}}` | nome do composable da store | `useCargosRhStore` |
-| `{{Model}}` | interface principal | `ICargoRH` |
-| `{{endpoint}}` | rota base | `/cargos` |
-
-Arquivos gerados (apenas os aplicáveis):
-
-```
-components/organisms/Table{{Entidade}}/Table{{Entidade}}.vue
-components/organisms/Table{{Entidade}}/Table{{Entidade}}.spec.ts
-components/templates/Modal{{Entidade}}/Modal{{Entidade}}.vue        (se modal = Sim)
-components/templates/Modal{{Entidade}}/Modal{{Entidade}}.spec.ts    (se modal = Sim)
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full">
+        <thead className="border-b bg-muted/50">
+          <tr>
+            <th className="p-3 text-left text-sm font-medium">Nome</th>
+            <th className="p-3 text-right text-sm font-medium">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data?.items?.map((item) => (
+            <tr key={item.id} className="border-b">
+              <td className="p-3 text-sm">{item.name}</td>
+              <td className="p-3 text-right">{/* ações */}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 ```
 
-Store, model (DTO) e handler MSW: se ainda não existirem, **delegue** ao fluxo padrão —
-a skill `api-integration` (model/store) e a skill `test-generator` (specs + MSW). Esta
-skill foca no(s) componente(s) de tabela/modal e em deixar os pontos de integração prontos.
+## Regras
 
-### Regras de geração (não negociáveis)
+- Componentes são `.tsx` com `'use client'`
+- Dados via SWR com `fetcher` de `lib/api.ts`
+- Estado local com `useState` (página, busca, filtros)
+- Paginação via `components/pagination.tsx` do projeto
+- Modal: Tailwind overlay (`fixed inset-0 z-50 bg-black/60`)
+- Tabela: responsiva com `overflow-x-auto`
+- Sem dependências de DataTable/Dialog externos
 
-- `data-testid` em **todo** elemento interativo (botões, inputs, linhas de ação),
-  no padrão `kebab-case` derivado da entidade (ex.: `tabela-{{entidade}}`,
-  `botao-adicionar-{{entidade}}`).
-- Sem lógica de negócio no componente — estado e chamadas ficam na store (`{{store}}`).
-- PrimeVue é **auto-import** (não importar `DataTable`, `Column`, `Button`, etc.).
-- Estilo Prettier do projeto: 2 espaços, aspas simples, sem ponto e vírgula, sem trailing comma.
-- **NUNCA** gerar snapshots nos testes (proibido no projeto).
-- Após gerar, rodar `yarn test` para os arquivos novos antes de declarar concluído.
+## Checklist
 
----
-
-## Passo 4 — Integração no fluxo agêntico
-
-Esta skill é a **fonte do padrão de tabela**. No fluxo do `feature-orchestrator`, quando a
-etapa de Componente Vue for uma **listagem tabular**, o agente `cy-frontend-developer`
-aciona `table-generator` (em vez de montar a tabela do zero com `frontend-dev`). Os testes
-continuam pelo `cy-qa-engineer` → `test-generator`, e os portões de review seguem normais.
-
----
-
-## Checklist de saída
-
-- [ ] Perguntas de refinamento respondidas (modal / filtros / paginação)
-- [ ] Componente `Table{{Entidade}}.vue` gerado a partir de `references/`
-- [ ] `Modal{{Entidade}}.vue` gerado (se aplicável)
-- [ ] `data-testid` em todos os elementos interativos
-- [ ] Store/model/handler existentes reutilizados ou delegados a `api-integration`/`test-generator`
-- [ ] `.spec.ts` gerado sem snapshots
-- [ ] `yarn test` dos arquivos novos passa
+- [ ] `'use client'` no topo de cada `.tsx`
+- [ ] SWR com null guard (se parâmetros podem ser vazios)
+- [ ] Estados: loading, error, empty, success
+- [ ] Responsividade: tabela com `overflow-x-auto`
+- [ ] Modal fecha com Esc e clique fora
+- [ ] Paginação: componente reutilizado de `components/pagination.tsx`
+- [ ] `npm run lint && npm run build` sem erros
+- [ ] `npx tsc --noEmit` sem erros

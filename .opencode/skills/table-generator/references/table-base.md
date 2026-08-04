@@ -1,193 +1,216 @@
-# Bloco BASE — `Card` + `DataTable` (sempre)
+# Bloco BASE — Container + Tabela HTML (sempre)
 
-Padrão mínimo de uma tabela de listagem. Inclui: `Card` com título e botão "Adicionar",
-`DataTable` com colunas, coluna de **Ações** (editar/remover) e wiring com a store.
-Os outros blocos (modal, filtros, paginação, seleção) **acrescentam** atributos/templates
-sobre esta base.
+Padrão mínimo de uma tabela de listagem. Inclui: cabeçalho com título e botão "Adicionar",
+tabela HTML com Tailwind, coluna de **Ações** (editar/remover) e integração com hook SWR.
+Os outros blocos (modal, filtros, paginação) **acrescentam** elementos sobre esta base.
 
 > Este código é genérico e autocontido — copie daqui, não de componentes do projeto.
 
-## Template
+## Componente
 
-```vue
-<template>
-  <!-- Modal: incluir somente se o bloco "modal" foi escolhido -->
-  <Modal{{Entidade}}
-    :display-modal="displayModal"
-    @display-modal="displayModal = $event"
-    :uuid-{{entidade}}="uuid{{Entidade}}Edit"
-  />
+```tsx
+'use client';
 
-  <Card>
-    <template #subtitle>
-      <div class="flex flex-row flex-wrap justify-between">
-        <div
-          class="font-bold text-surface-800 dark:text-surface-50 flex justify-items-center items-center"
-        >
-          {{Titulo}}
+import { useState } from 'react';
+import { Pencil, Trash2, Plus } from 'lucide-react';
+import { use{{Entidade}} } from '@/hooks/use{{Entidade}}';
+import { {{Tipo}} } from '@/lib/types';
+import { fetchWithAuth } from '@/lib/api';
+import { Pagination } from '@/components/pagination';
+// Modal: incluir somente se o bloco "modal" foi escolhido
+import { Modal{{Entidade}} } from '@/components/Modal{{Entidade}}';
+
+export function Table{{Entidade}}() {
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [editingId, setEditingId] = useState<string | undefined>(undefined);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const { {{entidades}}, totalPages, total, isLoading, error, mutate } =
+    use{{Entidade}}({ page, search });
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja remover este item?')) return;
+    try {
+      const res = await fetchWithAuth(`{{endpoint}}?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Erro ao remover');
+      mutate();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleEdit = (id: string) => {
+    setEditingId(id);
+    setIsModalOpen(true);
+  };
+
+  const handleCreate = () => {
+    setEditingId(undefined);
+    setIsModalOpen(true);
+  };
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setEditingId(undefined);
+    mutate();
+  };
+
+  return (
+    <>
+      {/* Modal: incluir somente se o bloco "modal" for escolhido */}
+      {isModalOpen && (
+        <Modal{{Entidade}}
+          {{entidade}}Id={editingId}
+          onClose={handleModalClose}
+        />
+      )}
+
+      <div className="rounded-xl border border-white/10 bg-[#111318] overflow-hidden">
+        {/* Cabeçalho */}
+        <div className="flex flex-row flex-wrap justify-between items-center px-6 py-4 border-b border-white/10">
+          <h2 className="text-lg font-bold text-white">{{Titulo}}</h2>
+          <button
+            onClick={handleCreate}
+            className="flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/5 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Adicionar
+          </button>
         </div>
-        <div class="mb-1">
-          <Button
-            id="btn-adicionar"
-            data-testid="btn-adicionar-{{entidade}}"
-            label="Adicionar"
-            outlined
-            icon="pi pi-plus"
-            class="mr-2"
-            @click="openModal()"
-          />
+
+        {/* Busca (opcional — ver header-filters.md) */}
+        {/* BUSCA_PLACEHOLDER */}
+
+        {/* Tabela */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/10 bg-white/5">
+                {/* COLUNAS: uma <th> por campo informado */}
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                  {{HeaderColuna}}
+                </th>
+                {/* Coluna de Ações (editar/remover) */}
+                <th className="px-4 py-3 text-right text-xs font-medium text-slate-400 uppercase tracking-wider w-24">
+                  Ações
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={2} className="px-4 py-8 text-center text-sm text-slate-400">
+                    Carregando...
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={2} className="px-4 py-8 text-center text-sm text-red-400">
+                    Erro ao carregar dados.
+                  </td>
+                </tr>
+              ) : {{entidades}}.length === 0 ? (
+                <tr>
+                  <td colSpan={2} className="px-4 py-8 text-center text-sm text-slate-400">
+                    Nenhum registro encontrado.
+                  </td>
+                </tr>
+              ) : (
+                {{entidades}}.map((item: {{Tipo}}) => (
+                  <tr key={item.id} className="hover:bg-white/5 transition-colors">
+                    <td className="px-4 py-3 text-sm text-white">
+                      {item.{{field}}}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => handleEdit(item.id)}
+                          className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-white/5"
+                          title="Editar"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="p-2 text-slate-400 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5"
+                          title="Remover"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
+
+        {/* Paginação (opcional — ver pagination-sorting.md) */}
+        {/* PAGINATION_PLACEHOLDER */}
       </div>
-    </template>
+    </>
+  );
+}
+```
 
-    <template #content>
-      <DataTable
-        :value="list{{Entidade}}"
-        data-testid="tabela-{{entidade}}"
-        class="p-datatable-{{entidade}}"
-        data-key="uuid"
-        :rows="5"
-        :rowHover="true"
-        :lazy="true"
-        :loading="loading"
-        :total-records="quantity"
-        :rowsPerPageOptions="[5, 10, 15, 20]"
-        responsiveLayout="scroll"
-        :first="firstItemInPage"
-        @page="onPage($event)"
-        showGridlines
-        paginator
-      >
-        <template #empty> Nenhum registro foi encontrado. </template>
+## Hook SWR correspondente
 
-        <!-- COLUNAS: uma <Column> por campo informado -->
-        <Column header="{{HeaderColuna}}">
-          <template #body="{ data }">
-            {{ data.{{field}} }}
-          </template>
-        </Column>
+```typescript
+// hooks/use{{Entidade}}.ts
+'use client';
 
-        <!-- Coluna de Ações (editar/remover) -->
-        <Column headerStyle="width: 6rem" :showFilterMenu="false">
-          <template #header>
-            <div class="flex-1 text-center font-bold">Ações</div>
-          </template>
-          <template #body="{ data, index }">
-            <div class="flex justify-center flex-wrap">
-              <Button
-                :data-testid="`botao-editar-{{entidade}}-${index}`"
-                icon="pi pi-pencil"
-                class="p-button-rounded p-button-text mx-0"
-                @click="openModal(data.uuid)"
-                v-tooltip.bottom="{
-                  value: 'Editar',
-                  pt: { arrow: { style: { display: 'none' } } }
-                }"
-              />
-              <Button
-                :data-testid="`botao-remover-{{entidade}}-${index}`"
-                icon="pi pi-trash"
-                class="p-button-rounded p-button-text mx-0"
-                @click="delete{{Entidade}}(data.uuid)"
-                v-tooltip.bottom="{
-                  value: 'Remover',
-                  pt: { arrow: { style: { display: 'none' } } }
-                }"
-              />
-            </div>
-          </template>
-        </Column>
-      </DataTable>
-    </template>
-  </Card>
-</template>
+import useSWR from 'swr';
+import { useMemo } from 'react';
+import { fetcher } from '@/lib/api';
+import { {{Tipo}} } from '@/lib/types';
 
-<script lang="ts" setup>
-  import { DataTablePageEvent } from 'primevue/datatable'
-  import { useConfirm } from 'primevue/useconfirm'
-  import { useToast } from 'primevue/usetoast'
-  import { {{store}} } from '~/store/{{entidades}}/{{entidades}}'
-  import { {{Model}} } from '~/models/{{Model}}'
+interface Use{{Entidade}}Params {
+  page?: number;
+  search?: string;
+}
 
-  // Composables
-  const {{entidade}}Store = {{store}}()
-  const nuxt = useNuxtApp()
-  const confirm = useConfirm()
-  const toast = useToast()
+export function use{{Entidade}}({ page = 1, search = '' }: Use{{Entidade}}Params = {}) {
+  const params = useMemo(() => {
+    const p = new URLSearchParams({
+      page: String(page),
+      limit: '10'
+    });
+    if (search.trim()) p.set('search', search.trim());
+    return p.toString();
+  }, [page, search]);
 
-  // Data
-  const uuid{{Entidade}}Edit = ref<string | undefined>('')
-  const displayModal = ref(false)
+  const { data, error, isLoading, mutate } = useSWR<{
+    data: {{Tipo}}[];
+    totalPages: number;
+    total: number;
+  }>(
+    `{{endpoint}}?${params}`,
+    fetcher,
+    { revalidateOnFocus: false }
+  );
 
-  // Computed
-  const loading = computed(() => {{entidade}}Store.$loading)
-  const list{{Entidade}} = computed(() => {{entidade}}Store.${{entidades}})
-  const quantity = computed(() => {{entidade}}Store.$quantity)
-  const firstItemInPage = computed(() => {{entidade}}Store.$firstItemInPage)
-
-  // Methods
-  const openModal = (uuid?: string) => {
-    uuid{{Entidade}}Edit.value = uuid
-    displayModal.value = true
-  }
-
-  const delete{{Entidade}} = async (uuid: string) => {
-    confirm.require({
-      message: 'Tem certeza que quer remover esse item?',
-      header: 'Confirmação',
-      icon: 'pi pi-info-circle',
-      acceptClass: 'p-button-danger',
-      accept: async () => {
-        nuxt.callHook('page:start')
-        const status = await {{entidade}}Store.del(uuid)
-        nuxt.callHook('page:finish')
-        if (status === 200) {
-          toast.add({
-            severity: 'success',
-            summary: 'Confirmado',
-            detail: 'O item foi removido',
-            life: 3000
-          })
-        }
-      }
-    })
-  }
-
-  const onPage = async ({ page, rows }: DataTablePageEvent) => {
-    await {{entidade}}Store.index({ page, size: rows, unpaged: false })
-  }
-
-  // Lifecycle
-  onMounted(async () => {
-    await nextTick()
-    await {{entidade}}Store.index()
-  })
-
-  defineExpose({
-    nuxt,
-    displayModal,
-    uuid{{Entidade}}Edit,
-    list{{Entidade}},
-    openModal,
-    delete{{Entidade}},
-    onPage
-  })
-</script>
-
-<style lang="scss" scoped>
-  .p-column-filter-element {
-    width: 100%;
-  }
-</style>
+  return {
+    {{entidades}}: data?.data || [],
+    totalPages: data?.totalPages || 1,
+    total: data?.total || 0,
+    error,
+    isLoading,
+    mutate
+  };
+}
 ```
 
 ## Notas
 
-- `data-key="uuid"` é o identificador padrão das entidades do projeto.
-- A store expõe getters read-only com prefixo `$` (`$loading`, `$quantity`,
-  `$firstItemInPage`, `${{entidades}}`) e mutações via `ref`. Ver skill `frontend-dev`.
-- `nuxt.callHook('page:start' | 'page:finish')` controla o overlay global de loading.
-- Se **não** houver modal, remova `<Modal{{Entidade}}>`, o botão "Adicionar" e o botão de
-  editar (mantendo só remover, se o usuário quiser ações).
-- Se **não** houver paginação, remova `:lazy`, `paginator`, `:rows`, `:rowsPerPageOptions`,
-  `:first` e `@page` (ver bloco `pagination-sorting.md` para o caso "Sim").
+- O componente usa `'use client'` porque contém hooks (`useState`, SWR) e handlers de evento
+- `id` é o identificador padrão das entidades (conforme `lib/types.ts`)
+- O hook SWR retorna `isLoading`, `error`, `mutate` para controle completo no componente
+- Ícones são do `lucide-react` (`Pencil`, `Trash2`, `Plus`)
+- A paginação usa o componente `Pagination` existente em `components/pagination.tsx`
+- Se **não** houver modal, remova `<Modal{{Entidade}}>`, o estado `isModalOpen`/`editingId`,
+  e deixe `handleCreate`/`handleEdit` como placeholders ou remova
+- Se **não** houver paginação, remova o `<Pagination>` e os estados `page`/`setPage`
+- Estilo: fundo escuro `bg-[#111318]`, bordas `border-white/10`, texto `text-slate-*`, foco `ring-emerald-500/50`
+- `overflow-x-auto` no wrapper da tabela garante scroll horizontal em mobile

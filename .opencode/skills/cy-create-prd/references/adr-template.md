@@ -48,7 +48,7 @@ YYYY-MM-DD
 
 ## Notas de Implementação
 
-[Quaisquer detalhes específicos de implementação, passos de migração ou notas técnicas relevantes para esta decisão.]
+[Quaisquer detalhes específicos de implementação, passos de migração ou notas técnicas.]
 
 ## Referências
 

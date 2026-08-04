@@ -51,24 +51,24 @@ Traduza cada funcionalidade de nome técnico para a pergunta de experiência do 
 
 Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
 
-1. **Determinar projeto e diretório** — derivar `<ticket>-<slug>`, criar `../ppov-docs/issues/front/<ticket>-<slug>/` e `adrs/`
+1. **Determinar projeto e diretório** — derivar `<ticket>-<slug>`, criar `./docs/<ticket>-<slug>/` e `adrs/`
 2. **Descobrir contexto** — exploração paralela da base de código e pesquisa web
 3. **Entender a necessidade** — fazer 3-6 perguntas direcionadas para refinar escopo e intenção
 4. **Apresentar abordagens de produto** — oferecer 2-3 abordagens com trade-offs, criar ADR para a escolhida
 5. **Rascunhar o PRD** — escrever usando o template canônico de `references/prd-template.md`
 6. **Revisar com o usuário** — apresentar o rascunho, iterar até aprovação
-7. **Salvar o arquivo** — escrever em `../ppov-docs/issues/front/<ticket>-<slug>/prd.md`
+7. **Salvar o arquivo** — escrever em `./docs/<ticket>-<slug>/prd.md`
 
 ## Fluxo de Trabalho
 
 1. Determinar o nome do projeto e o diretório de trabalho.
    - Derivar o `<ticket>` a partir do prefixo numérico da branch git atual (ex.: branch `1796-feature-x` → ticket `1796`). Se a branch não tiver prefixo numérico, perguntar o número do ticket ao usuário.
    - Derivar o `<slug>` a partir do nome da funcionalidade fornecido pelo usuário.
-   - Usar `../ppov-docs/issues/front/<ticket>-<slug>/` (caminho relativo à raiz do checkout de `ppov-front-vue3`, nunca absoluto — o `ppov-docs` deve estar clonado como pasta irmã) como diretório alvo.
+   - Usar `./docs/<ticket>-<slug>/` (caminho relativo à raiz do projeto) como diretório alvo.
    - Se `_idea.md` existir no diretório alvo, lê-lo como entrada de contexto principal.
    - Se `prd.md` já existir no diretório alvo, lê-lo e operar em modo de atualização.
    - Se o diretório não existir, criá-lo.
-   - Criar o diretório `../ppov-docs/issues/front/<ticket>-<slug>/adrs/` se não existir.
+   - Criar o diretório `./docs/<ticket>-<slug>/adrs/` se não existir.
 
 2. Descobrir contexto por meio de pesquisa paralela. Você DEVE realizar AMBAS as trilhas antes de fazer qualquer pergunta.
 
@@ -105,9 +105,9 @@ Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
    - Aguardar o usuário selecionar uma abordagem antes de continuar.
    - Após o usuário selecionar uma abordagem, criar um ADR para esta decisão:
      - Ler `references/adr-template.md`.
-     - Determinar o próximo número de ADR listando arquivos existentes em `../ppov-docs/issues/front/<ticket>-<slug>/adrs/`.
+     - Determinar o próximo número de ADR listando arquivos existentes em `./docs/<ticket>-<slug>/adrs/`.
      - Preencher o template: a abordagem selecionada como "Decisão", abordagens rejeitadas como "Alternativas Consideradas" com seus trade-offs, e resultados como "Consequências". Definir Status como "Aceito" e Data como hoje.
-     - Escrever o ADR em `../ppov-docs/issues/front/<ticket>-<slug>/adrs/adr-NNN.md` (número de 3 dígitos com zero à esquerda, ex.: `adr-001.md`).
+     - Escrever o ADR em `./docs/<ticket>-<slug>/adrs/adr-NNN.md` (número de 3 dígitos com zero à esquerda, ex.: `adr-001.md`).
 
 5. Rascunhar o PRD.
    - Após o usuário selecionar uma abordagem, sintetize o design final do produto. Não apresente cada seção para aprovação separada.
@@ -135,7 +135,7 @@ Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
    - Se D: voltar ao passo 3.
 
 7. Salvar o arquivo do PRD.
-   - Escrever o documento completo em `../ppov-docs/issues/front/<ticket>-<slug>/prd.md`.
+   - Escrever o documento completo em `./docs/<ticket>-<slug>/prd.md`.
    - Confirmar o caminho do arquivo ao usuário.
    - Lembrar ao usuário que o próximo passo é criar um TechSpec usando `cy-create-techspec` a partir deste PRD.
 
@@ -143,26 +143,22 @@ Você DEVE criar uma tarefa para cada fase e completá-las em ordem:
 
 ```dot
 digraph create_prd {
-    "Determinar projeto e diretório" [shape=box];
-    "Descobrir contexto (base de código + web)" [shape=box];
-    "Fazer perguntas de esclarecimento (uma por vez)" [shape=box];
-    "Apresentar 2-3 abordagens de produto" [shape=box];
-    "Usuário selecionou abordagem?" [shape=diamond];
-    "Criar ADR para decisão de abordagem" [shape=box];
-    "Rascunhar PRD (template canônico)" [shape=box];
-    "Usuário aprovou rascunho?" [shape=diamond];
-    "Salvar prd.md" [shape=doublecircle];
-
-    "Determinar projeto e diretório" -> "Descobrir contexto (base de código + web)";
-    "Descobrir contexto (base de código + web)" -> "Fazer perguntas de esclarecimento (uma por vez)";
-    "Fazer perguntas de esclarecimento (uma por vez)" -> "Apresentar 2-3 abordagens de produto";
-    "Apresentar 2-3 abordagens de produto" -> "Usuário selecionou abordagem?";
-    "Usuário selecionou abordagem?" -> "Apresentar 2-3 abordagens de produto" [label="não, revisar"];
-    "Usuário selecionou abordagem?" -> "Criar ADR para decisão de abordagem" [label="sim"];
-    "Criar ADR para decisão de abordagem" -> "Rascunhar PRD (template canônico)";
-    "Rascunhar PRD (template canônico)" -> "Usuário aprovou rascunho?";
-    "Usuário aprovou rascunho?" -> "Rascunhar PRD (template canônico)" [label="não, revisar"];
-    "Usuário aprovou rascunho?" -> "Salvar prd.md" [label="aprovado"];
+    "Determinar projeto e diretório" [shape=box label="1. Dir"];
+    "Descobrir contexto" [shape=box label="2. Contexto"];
+    "Fazer perguntas" [shape=box label="3. Perguntas"];
+    "Apresentar 2-3 abordagens" [shape=box label="4. Abordagens"];
+    "Usuário selecionou?" [shape=diamond label="Aprovado?"];
+    "Criar ADR" [shape=box label="4a. ADR"];
+    "Rascunhar PRD" [shape=box label="5. PRD"];
+    "Usuário aprovou rascunho?" [shape=diamond label="Aprovado?"];
+    "Salvar prd.md" [shape=doublecircle label="OK"];
+    1 -> 2 -> 3 -> 4 -> "Usuário selecionou?";
+    "Usuário selecionou?" -> 4 [label="não"];
+    "Usuário selecionou?" -> "Criar ADR" [label="sim"];
+    "Criar ADR" -> "Rascunhar PRD";
+    "Rascunhar PRD" -> "Usuário aprovou rascunho?";
+    "Usuário aprovou rascunho?" -> "Rascunhar PRD" [label="não"];
+    "Usuário aprovou rascunho?" -> "Salvar prd.md" [label="sim"];
 }
 ```
 
