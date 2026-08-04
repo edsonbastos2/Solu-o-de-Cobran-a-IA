@@ -24,6 +24,9 @@ export function HelpChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
+  // Só renderiza quando autenticado (não aparece na tela de login)
+  if (!user) return null;
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
