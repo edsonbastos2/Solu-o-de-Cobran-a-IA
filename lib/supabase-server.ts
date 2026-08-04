@@ -32,7 +32,7 @@ export async function getSupabaseServerWithAdminFallback(req: Request) {
     const { data: { user } } = await serverClient.auth.getUser();
     if (user) {
       const { data: profile } = await adminClient.from('profiles').select('is_super_admin, email').eq('id', user.id).maybeSingle();
-      const isSuper = profile?.is_super_admin === true || profile?.email === 'bastose132@gmail.com' || user.email === 'bastose132@gmail.com';
+      const isSuper = profile?.is_super_admin === true;
       if (isSuper) {
         return adminClient;
       }
@@ -42,7 +42,7 @@ export async function getSupabaseServerWithAdminFallback(req: Request) {
     console.error('Error checking user in server client:', err);
   }
 
-  // Fallback to adminClient if service role key is available so data is visible
-  return adminClient || serverClient;
+  // Default to serverClient (RLS-protected). Never fall back to admin client for unauthenticated requests.
+  return serverClient;
 }
 

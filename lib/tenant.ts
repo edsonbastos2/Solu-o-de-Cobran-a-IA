@@ -27,8 +27,7 @@ export async function getTenantAccess(requestedUserId?: string | null): Promise<
       .maybeSingle();
 
     if (profile) {
-      const isSuper = profile.is_super_admin === true || profile.email === 'bastose132@gmail.com';
-      return { userId: requestedUserId, isSuperAdmin: isSuper };
+      return { userId: requestedUserId, isSuperAdmin: profile.is_super_admin === true };
     }
   } catch (err) {
     console.error('Error checking superadmin status:', err);

@@ -2,7 +2,7 @@
 -- SCRIPT DE SEGURANÇA E ISOLAMENTO MULTI-TENANT (ROW LEVEL SECURITY)
 -- ==============================================================================
 -- Este script garante a separação total dos dados entre empresas (tenants).
--- Apenas o Super Admin (bastose132@gmail.com ou is_super_admin=true) pode ver todos os dados.
+-- Apenas o Super Admin (is_super_admin=true) pode ver todos os dados.
 -- Usuários comuns só enxergam os dados vinculados ao seu próprio user_id.
 
 -- 1. Garante que todas as tabelas possuem a coluna user_id
@@ -28,7 +28,7 @@ RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.profiles
-    WHERE id = user_id AND (is_super_admin = true OR email = 'bastose132@gmail.com')
+    WHERE id = user_id AND is_super_admin = true
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

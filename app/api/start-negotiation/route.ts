@@ -2,8 +2,9 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { serverError } from '@/lib/api-auth';
 
 const SYSTEM_PROMPT = `Você é um agente de cobrança de dívidas educado, focado e objetivo trabalhando para um escritório de advocacia.
 Seu objetivo é iniciar a abordagem para tentar fechar um acordo de pagamento com o devedor.
@@ -24,11 +25,12 @@ export async function POST(req: NextRequest) {
   try {
     const { caseId } = await req.json();
 
-    if (!supabase) {
+    const admin = getSupabaseAdmin();
+    if (!admin) {
       return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
     }
 
-    const { data: caseData, error: caseError } = await supabase
+    const { data: caseData, error: caseError } = await admin
       .from('cases')
       .select('*')
       .eq('id', caseId)
@@ -41,24 +43,26 @@ export async function POST(req: NextRequest) {
     if (caseData.status !== 'not_started') {
       return NextResponse.json({ error: "Este caso já foi iniciado." }, { status: 400 });
     }
-    
-    // Fetch AI configuration from user profile
+
+    // Fetch AI configuration from user profile (via RPC com chaves descriptografadas)
     let aiProvider = 'gemini';
     let aiModel = 'gemini-3.5-flash';
     let apiKey = process.env.GEMINI_API_KEY || '';
     let ollamaBaseUrl = 'http://localhost:11434';
 
     if (caseData.user_id) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', caseData.user_id)
-        .single();
+      let profile: any = null;
+      const { data: rpcData, error: rpcErr } = await admin.rpc('get_user_ai_keys', { p_user_id: caseData.user_id });
+      if (!rpcErr && rpcData && rpcData.length > 0) profile = rpcData[0];
+      if (!profile) {
+        const { data } = await admin.from('profiles').select('*').eq('id', caseData.user_id).single();
+        profile = data;
+      }
 
       if (profile) {
         aiProvider = profile.ai_provider || 'gemini';
         aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : aiProvider === 'openrouter' ? 'meta-llama/llama-3-8b-instruct:free' : 'claude-3-haiku');
-        
+
         if (aiProvider === 'gemini') {
           apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
         } else if (aiProvider === 'openai') {
@@ -144,7 +148,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Erro na API do ${aiProvider}: ${error.message || String(error)}` }, { status: 500 });
     }
 
-    await supabase.from('messages').insert({
+    await admin.from('messages').insert({
       case_id: caseId,
       role: 'ai',
       content: aiText
@@ -156,12 +160,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    await supabase.from('cases').update({ status: 'in_negotiation' }).eq('id', caseId);
+    await admin.from('cases').update({ status: 'in_negotiation' }).eq('id', caseId);
 
     return NextResponse.json({ text: aiText, newStatus: 'in_negotiation' });
 
   } catch (error: any) {
-    console.error("API Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return serverError('start-negotiation error', error);
   }
 }

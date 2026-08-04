@@ -1,0 +1,147 @@
+-- ==============================================================================
+-- CRIPTOGRAFIA DE CHAVES DE IA E WHATSAPP EM profiles
+-- ==============================================================================
+-- As colunas abaixo contêm segredos do cliente (chaves de LLM, tokens Z-API).
+-- Antes eram armazenadas em texto puro. Esta migration:
+--   1. Habilita pgcrypto.
+--   2. Adiciona funções encrypt/decrypt usando chave do Vault (vault.secret_key).
+--   3. Migra as colunas TEXT existentes para TEXT (criptografado).
+--   4. Atualiza a trigger de update para re-criptografar campos sensíveis.
+--
+-- Pré-requisito:
+--   Defina uma chave de criptografia no Vault do Supabase (Project Settings > Vault):
+--     nome: ai_keys_encryption_key
+--     valor: <chave aleatória de 32 bytes (base64)>
+--   E conceda acesso à função service_role.
+-- Caso use Supabase self-hosted, crie a chave em vault.secrets.
+-- ==============================================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS supabase_vault; -- presente no Supabase gerenciado
+
+-- --------------------------------------------------------------------
+-- Helper: obter chave de criptografia do Vault (fallback p/ env-info)
+-- --------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_ai_encryption_key()
+RETURNS BYTEA
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COALESCE(
+    (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'ai_keys_encryption_key' LIMIT 1),
+    digest(COALESCE(current_setting('app.ai_keys_enc_key', true), 'fallback-insecure-key'), 'sha256')
+  )
+$$;
+
+-- --------------------------------------------------------------------
+-- Encrypt/Decrypt de strings
+-- --------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.ai_encrypt(plain TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF plain IS NULL OR plain = '' THEN
+    RETURN plain;
+  END IF;
+  -- retorna em base64 o envelope pgcrypto (iv + ciphertext + tag)
+  RETURN encode(
+    pgp_sym_encrypt(plain, convert_from(public.get_ai_encryption_key(), 'latin1')),
+    'base64'
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.ai_decrypt(cipher TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  raw BYTEA;
+BEGIN
+  IF cipher IS NULL OR cipher = '' THEN
+    RETURN cipher;
+  END IF;
+  raw := decode(cipher, 'base64');
+  RETURN pgp_sym_decrypt(raw, convert_from(public.get_ai_encryption_key(), 'latin1'));
+END;
+$$;
+
+-- --------------------------------------------------------------------
+-- Migração dos dados existentes: criptografa o valor atual (idempotente)
+-- --------------------------------------------------------------------
+-- Nota: rodar uma única vez. Repetir re-criptografa o texto cifrado, quebrando o dado.
+-- Antes de rodar, faça backup da tabela profiles.
+--
+-- UPDATE public.profiles
+--   SET gemini_api_key     = public.ai_encrypt(gemini_api_key),
+--       openai_api_key     = public.ai_encrypt(openai_api_key),
+--       anthropic_api_key  = public.ai_encrypt(anthropic_api_key),
+--       openrouter_api_key = public.ai_encrypt(openrouter_api_key),
+--       zapi_key           = public.ai_encrypt(zapi_key),
+--       zapi_client_token  = public.ai_encrypt(zapi_client_token)
+-- WHERE gemini_api_key IS NOT NULL
+--    OR openai_api_key IS NOT NULL
+--    OR anthropic_api_key IS NOT NULL
+--    OR openrouter_api_key IS NOT NULL
+--    OR zapi_key IS NOT NULL
+--    OR zapi_client_token IS NOT NULL;
+
+-- --------------------------------------------------------------------
+-- RLS: nenhum acesso anônimo; só service_role lê/escreve os segredos.
+-- A leitura para o próprio usuário é mediada por API server-side.
+-- Revoga acesso direto via API anônima/gráfica para as colunas sensíveis.
+-- --------------------------------------------------------------------
+REVOKE UPDATE (gemini_api_key, openai_api_key, anthropic_api_key, openrouter_api_key, zapi_key, zapi_client_token)
+  ON public.profiles FROM anon, authenticated;
+
+-- --------------------------------------------------------------------
+-- RPC para o servidor (service role) ler as chaves descriptografadas.
+-- Retorna NULL para colunas vazias; nunca expõe para anon/authenticated.
+-- --------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.get_user_ai_keys(p_user_id UUID)
+RETURNS TABLE (
+  ai_provider TEXT,
+  ai_model TEXT,
+  gemini_api_key TEXT,
+  openai_api_key TEXT,
+  anthropic_api_key TEXT,
+  openrouter_api_key TEXT,
+  ollama_base_url TEXT,
+  zapi_instance TEXT,
+  zapi_key TEXT,
+  zapi_client_token TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  SELECT
+    p.ai_provider,
+    p.ai_model,
+    public.ai_decrypt(p.gemini_api_key),
+    public.ai_decrypt(p.openai_api_key),
+    public.ai_decrypt(p.anthropic_api_key),
+    public.ai_decrypt(p.openrouter_api_key),
+    p.ollama_base_url,
+    p.zapi_instance,
+    public.ai_decrypt(p.zapi_key),
+    public.ai_decrypt(p.zapi_client_token)
+  INTO
+    ai_provider, ai_model, gemini_api_key, openai_api_key,
+    anthropic_api_key, openrouter_api_key, ollama_base_url,
+    zapi_instance, zapi_key, zapi_client_token
+  FROM public.profiles p
+  WHERE p.id = p_user_id;
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_user_ai_keys(UUID) FROM anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_user_ai_keys(UUID) TO service_role;

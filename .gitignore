@@ -5,3 +5,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Windows reserved device name (accidentally created, cannot be deleted via path)
+nul

@@ -1,71 +1,118 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { processChat } from '@/lib/agent';
+import { rateLimit } from '@/lib/rate-limit';
 
-// Handle incoming messages from Z-API
+// Normaliza telefone para dígitos sem o código 55 do Brasil.
+function normalizePhone(phone?: string): string | null {
+  if (!phone) return null;
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('55') && digits.length > 11) {
+    digits = digits.substring(2);
+  }
+  // Aceita 10 (fixo) ou 11 (com nono dígito) para BR.
+  if (digits.length !== 10 && digits.length !== 11) return null;
+  return digits;
+}
+
 export async function POST(req: NextRequest) {
   try {
+    // 1. Verificação de segredo do webhook (header X-Webhook-Secret)
+    const webhookSecret = process.env.WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error('WEBHOOK_SECRET não configurado. Bloqueando webhook.');
+      return NextResponse.json({ error: 'Servidor mal configurado' }, { status: 503 });
+    }
+    const incomingSecret = req.headers.get('x-webhook-secret');
+    if (!incomingSecret || incomingSecret !== webhookSecret) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
+    // 2. Validar Content-Type
+    const contentType = req.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      return NextResponse.json({ error: 'Content-Type inválido' }, { status: 415 });
+    }
+
     const body = await req.json();
 
-    // Check if it's a message received event from Z-API (and not from ourselves)
+    // Ignora mensagens enviadas pelo próprio bot
     if (body.fromMe) {
       return NextResponse.json({ ok: true });
     }
 
-    // Usually Z-API text messages are inside a 'text' object with a 'message' field
-    const text = body.text?.message || body.text; 
-    const from = body.phone; // Sender's phone number, e.g., '5511999999999'
+    const text = body.text?.message || (typeof body.text === 'string' ? body.text : null);
+    const from = body.phone;
 
     if (!text || !from) {
       return NextResponse.json({ ok: true });
     }
 
-    console.log(`Received Z-API message from ${from}: ${text}`);
+    // 3. Limita tamanho da mensagem recebida (evita payload gigante)
+    const messageText = String(text).slice(0, 4000);
 
-    if (!supabase) {
-      console.error("Supabase not configured.");
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      console.error('Supabase admin não configurado.');
       return NextResponse.json({ ok: true });
     }
 
-    // Strip country code for matching (assuming Brazilian +55) if it starts with 55
-    let phoneToMatch = from;
-    if (phoneToMatch.startsWith('55') && phoneToMatch.length > 10) {
-      phoneToMatch = phoneToMatch.substring(2);
+    // 4. Idempotência: descarta eventos duplicados do Z-API
+    const eventId = body.messageId || body.id || body.instanceId + '|' + body.chatId || null;
+    if (eventId) {
+      const { data: existing } = await supabaseAdmin
+        .from('webhook_events')
+        .select('id')
+        .eq('id', eventId)
+        .maybeSingle();
+      if (existing) {
+        return NextResponse.json({ ok: true, duplicated: true });
+      }
+      await supabaseAdmin.from('webhook_events').insert({ id: eventId, payload: body });
     }
 
-    // Try to find an open case matching the phone number
-    const { data: cases, error: casesError } = await supabase
+    // 5. Match de caso por telefone (match exato após normalização)
+    const normalized = normalizePhone(from);
+    if (!normalized) {
+      console.warn('Telefone inválido, ignorando:', from);
+      return NextResponse.json({ ok: true });
+    }
+
+    const { data: cases, error: casesError } = await supabaseAdmin
       .from('cases')
       .select('*')
       .or(`status.eq.not_started,status.eq.in_negotiation,status.eq.needs_attention`)
-      .like('phone', `%${phoneToMatch}%`)
+      .or(`phone.eq.${normalized},phone.eq.55${normalized}`)
       .order('created_at', { ascending: false })
       .limit(1);
 
     if (casesError || !cases || cases.length === 0) {
-      console.log(`No active case found for phone: ${from}`);
       return NextResponse.json({ ok: true });
     }
 
     const currentCase = cases[0];
 
-    // If case is in human intervention mode (needs_attention), just record the message and do not invoke Gemini AI
+    // Se o caso está em intervenção humana, apenas registra a mensagem
     if (currentCase.status === 'needs_attention') {
-      console.log(`Case ${currentCase.id} is in human intervention mode. Storing debtor message without invoking AI.`);
-      await supabase.from('messages').insert({
+      await supabaseAdmin.from('messages').insert({
         case_id: currentCase.id,
         role: 'user',
-        content: text
+        content: messageText
       });
       return NextResponse.json({ ok: true });
     }
 
-    // Trigger the chat logic directly
-    const result = await processChat(currentCase.id, text);
-    
+    // Dispara a lógica de chat com rate limiting por telefone (evita abuso)
+    const rlKey = `wa:${normalized}`;
+    if (!rateLimit(rlKey, 5, 60_000)) {
+      console.warn('Rate limit webhook excedido para', normalized);
+      return NextResponse.json({ ok: true, rateLimited: true });
+    }
+    const result = await processChat(currentCase.id, messageText);
+
     return NextResponse.json({ ok: true, newStatus: result.newStatus });
   } catch (error) {
     console.error('Z-API Webhook Error:', error);
-    return NextResponse.json({ error: 'Erro Interno do Servidor' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

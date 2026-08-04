@@ -29,7 +29,7 @@ const fetchProfiles = async (url: string) => {
 };
 
 export default function AdminUsersPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [page, setPage] = useState(1);
@@ -55,12 +55,13 @@ export default function AdminUsersPage() {
   const loading = !data && !error;
 
   useEffect(() => {
-    if (!authLoading && user) {
-      if (user.email !== 'bastose132@gmail.com') {
+    if (!authLoading && (user || profile)) {
+      const isSuper = profile?.is_super_admin === true;
+      if (!isSuper) {
         router.push('/');
       }
     }
-  }, [user, authLoading, router]);
+  }, [user, profile, authLoading, router]);
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,7 +268,7 @@ export default function AdminUsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {profile.email === 'bastose132@gmail.com' ? (
+                      {profile.is_super_admin ? (
                         <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-500 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-emerald-500/20">
                           <ShieldCheck className="w-3.5 h-3.5" />
                           Master Admin

@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { getCollectionStage } from '@/lib/finance';
 import { fetchAgents, AgentConfig } from '@/lib/multi-agent';
@@ -162,16 +163,31 @@ export async function processChat(caseId: string, message: string) {
   let ollamaBaseUrl = 'http://localhost:11434';
 
   if (caseData.user_id) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', caseData.user_id)
-      .single();
+    const admin = getSupabaseAdmin();
+    let profile: any = null;
+    if (admin) {
+      // Tenta o RPC que retorna chaves descriptografadas (se migration aplicada)
+      const { data: rpcData, error: rpcErr } = await admin
+        .rpc('get_user_ai_keys', { p_user_id: caseData.user_id });
+      if (!rpcErr && rpcData && rpcData.length > 0) {
+        profile = rpcData[0];
+      }
+    }
+    if (!profile) {
+      // Fallback: lê direto da tabela (chaves em texto puro se migration não aplicada)
+      const client = admin || supabase;
+      const { data } = await client!
+        .from('profiles')
+        .select('*')
+        .eq('id', caseData.user_id)
+        .single();
+      profile = data;
+    }
 
     if (profile) {
       aiProvider = profile.ai_provider || 'gemini';
       aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : aiProvider === 'openrouter' ? 'meta-llama/llama-3-8b-instruct:free' : 'claude-3-haiku');
-      
+
       if (aiProvider === 'gemini') {
         apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
       } else if (aiProvider === 'openai') {

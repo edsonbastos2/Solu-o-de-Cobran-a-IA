@@ -4,19 +4,19 @@ import { useState, useEffect } from 'react';
 import { Header } from '@/components/header';
 import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, AlertTriangle, Bot } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import { formatPhoneInput } from '@/lib/utils';
+import { CheckCircle2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'ai'>('profile');
-  
+
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [zapiInstance, setZapiInstance] = useState('');
   const [zapiKey, setZapiKey] = useState('');
   const [zapiClientToken, setZapiClientToken] = useState('');
-  
+
   const [aiProvider, setAiProvider] = useState('gemini');
   const [aiModel, setAiModel] = useState('gemini-3.5-flash');
   const [geminiKey, setGeminiKey] = useState('');
@@ -24,36 +24,34 @@ export default function SettingsPage() {
   const [anthropicKey, setAnthropicKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [ollamaUrl, setOllamaUrl] = useState('');
-  
+
+  // Flags indicando se cada segredo já está salvo no servidor (não expõe o valor)
+  const [secrets, setSecrets] = useState<Record<string, boolean>>({});
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadProfile() {
-      if (user && supabase) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        
-        if (data) {
-          setName(data.name || '');
-          setPhone(data.phone ? formatPhoneInput(data.phone) : '');
-          setZapiInstance(data.zapi_instance || '');
-          setZapiKey(data.zapi_key || '');
-          setZapiClientToken(data.zapi_client_token || '');
-          setAiProvider(data.ai_provider || 'gemini');
-          setAiModel(data.ai_model || 'gemini-3.5-flash');
-          setGeminiKey(data.gemini_api_key || '');
-          setOpenaiKey(data.openai_api_key || '');
-          setAnthropicKey(data.anthropic_api_key || '');
-          setOpenrouterKey(data.openrouter_api_key || '');
-          setOllamaUrl(data.ollama_base_url || 'http://localhost:11434');
-        } else if (error && error.code !== 'PGRST116') {
-          console.error('Error loading profile:', error);
+      if (!user) return;
+      try {
+        const res = await fetch('/api/settings');
+        if (!res.ok) throw new Error('Falha ao carregar perfil');
+        const json = await res.json();
+        const p = json.profile;
+        if (p) {
+          setName(p.name || '');
+          setPhone(p.phone ? formatPhoneInput(p.phone) : '');
+          setZapiInstance(p.zapi_instance || '');
+          setAiProvider(p.ai_provider || 'gemini');
+          setAiModel(p.ai_model || 'gemini-3.5-flash');
+          setOllamaUrl(p.ollama_base_url || 'http://localhost:11434');
         }
+        if (json.secrets) setSecrets(json.secrets);
+      } catch (err) {
+        console.error('Error loading profile:', err);
+        setError('Erro ao carregar configurações.');
       }
     }
     loadProfile();
@@ -62,35 +60,40 @@ export default function SettingsPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    
+
     setSaving(true);
     setSaved(false);
     setError(null);
-    
-    try {
-      if (!supabase) throw new Error('Supabase não configurado');
 
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          name,
-          phone,
-          zapi_instance: zapiInstance,
-          zapi_key: zapiKey,
-          zapi_client_token: zapiClientToken,
-          ai_provider: aiProvider,
-          ai_model: aiModel,
-          gemini_api_key: geminiKey,
-          openai_api_key: openaiKey,
-          anthropic_api_key: anthropicKey,
-          openrouter_api_key: openrouterKey,
-          ollama_base_url: ollamaUrl,
-          updated_at: new Date().toISOString(),
-        });
-        
-      if (error) throw error;
-      
+    try {
+      // Envia apenas os segredos que o usuário preencheu neste formulário;
+      // campos vazios NÃO são enviados (undefined) para não sobrescrever os salvos.
+      const payload: Record<string, unknown> = {
+        name, phone,
+        zapi_instance: zapiInstance,
+        ai_provider: aiProvider,
+        ai_model: aiModel,
+        ollama_base_url: ollamaUrl,
+      };
+      if (zapiKey !== '') payload.zapi_key = zapiKey;
+      if (zapiClientToken !== '') payload.zapi_client_token = zapiClientToken;
+      if (geminiKey !== '') payload.gemini_api_key = geminiKey;
+      if (openaiKey !== '') payload.openai_api_key = openaiKey;
+      if (anthropicKey !== '') payload.anthropic_api_key = anthropicKey;
+      if (openrouterKey !== '') payload.openrouter_api_key = openrouterKey;
+
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao salvar');
+
+      // Limpa os campos de segredo após salvar com sucesso
+      setZapiKey(''); setZapiClientToken('');
+      setGeminiKey(''); setOpenaiKey(''); setAnthropicKey(''); setOpenrouterKey('');
+
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err: any) {
@@ -226,22 +229,26 @@ export default function SettingsPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token da Instância</label>
-                        <input 
+                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token da Instância
+                          {secrets.zapi_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                        </label>
+                        <input
                           type="password"
                           value={zapiKey}
                           onChange={(e) => setZapiKey(e.target.value)}
-                          placeholder="Ex: A5B2C..."
+                          placeholder={secrets.zapi_key_set ? '•••••• (preencha para substituir)' : 'Ex: A5B2C...'}
                           className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token de Segurança (Client-Token)</label>
-                        <input 
+                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token de Segurança (Client-Token)
+                          {secrets.zapi_client_token_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                        </label>
+                        <input
                           type="password"
                           value={zapiClientToken}
                           onChange={(e) => setZapiClientToken(e.target.value)}
-                          placeholder="••••••••••••••••"
+                          placeholder={secrets.zapi_client_token_set ? '•••••• (preencha para substituir)' : '••••••••••••••••'}
                           className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                         />
                       </div>
@@ -319,12 +326,14 @@ export default function SettingsPage() {
                       
                       {aiProvider === 'gemini' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Google Gemini API Key</label>
-                          <input 
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Google Gemini API Key
+                            {secrets.gemini_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                          </label>
+                          <input
                             type="password"
                             value={geminiKey}
                             onChange={(e) => setGeminiKey(e.target.value)}
-                            placeholder="AIzaSy..."
+                            placeholder={secrets.gemini_api_key_set ? '•••••• (preencha para substituir)' : 'AIzaSy...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         </div>
@@ -332,12 +341,14 @@ export default function SettingsPage() {
                       
                       {aiProvider === 'openai' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenAI API Key</label>
-                          <input 
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenAI API Key
+                            {secrets.openai_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                          </label>
+                          <input
                             type="password"
                             value={openaiKey}
                             onChange={(e) => setOpenaiKey(e.target.value)}
-                            placeholder="sk-..."
+                            placeholder={secrets.openai_api_key_set ? '•••••• (preencha para substituir)' : 'sk-...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         </div>
@@ -345,12 +356,14 @@ export default function SettingsPage() {
                       
                       {aiProvider === 'anthropic' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Anthropic API Key</label>
-                          <input 
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Anthropic API Key
+                            {secrets.anthropic_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                          </label>
+                          <input
                             type="password"
                             value={anthropicKey}
                             onChange={(e) => setAnthropicKey(e.target.value)}
-                            placeholder="sk-ant-..."
+                            placeholder={secrets.anthropic_api_key_set ? '•••••• (preencha para substituir)' : 'sk-ant-...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         </div>
@@ -358,12 +371,14 @@ export default function SettingsPage() {
 
                       {aiProvider === 'openrouter' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenRouter API Key</label>
-                          <input 
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenRouter API Key
+                            {secrets.openrouter_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                          </label>
+                          <input
                             type="password"
                             value={openrouterKey}
                             onChange={(e) => setOpenrouterKey(e.target.value)}
-                            placeholder="sk-or-v1-..."
+                            placeholder={secrets.openrouter_api_key_set ? '•••••• (preencha para substituir)' : 'sk-or-v1-...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         </div>

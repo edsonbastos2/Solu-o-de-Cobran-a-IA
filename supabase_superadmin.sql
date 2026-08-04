@@ -16,8 +16,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Definir bastose132@gmail.com como super admin (se já existir)
-UPDATE public.profiles SET is_super_admin = true WHERE email = 'bastose132@gmail.com';
+-- Definir super admins explicitamente via id (NUNCA via email, que é spoofable)
+-- Exemplo:
+-- UPDATE public.profiles SET is_super_admin = true WHERE id = '00000000-0000-0000-0000-000000000000';
 
 -- Novas políticas para o perfil do Super Admin ver e editar todos os perfis
 DROP POLICY IF EXISTS "Superadmins podem ver todos os perfis" ON public.profiles;
@@ -25,8 +26,6 @@ CREATE POLICY "Superadmins podem ver todos os perfis"
   ON public.profiles
   FOR SELECT
   USING (
-    auth.jwt() ->> 'email' = 'bastose132@gmail.com' 
-    OR 
     is_super_admin = true
     OR
     auth.uid() = id
@@ -37,8 +36,6 @@ CREATE POLICY "Superadmins podem atualizar todos os perfis"
   ON public.profiles
   FOR UPDATE
   USING (
-    auth.jwt() ->> 'email' = 'bastose132@gmail.com' 
-    OR 
     is_super_admin = true
     OR
     auth.uid() = id

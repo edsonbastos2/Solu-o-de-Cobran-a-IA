@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 // Função simulada para envio de e-mail ao administrador
 async function sendAdminEmail(caseId: string, caseName: string, hours: number) {
-  // Em um ambiente real, você integraria com SendGrid, Resend, AWS SES, etc.
-  console.log(`[MOCK EMAIL SENT] Para: admin@escritorio.com`);
-  console.log(`[MOCK EMAIL SENT] Assunto: Alerta de Inatividade - Caso #${caseId.substring(0, 8)}`);
-  console.log(`[MOCK EMAIL SENT] Corpo: O devedor ${caseName} (Caso #${caseId.substring(0, 8)}) não responde há mais de ${Math.floor(hours)} horas. O caso foi movido para 'Requer Atenção'.`);
+  console.log(`[MOCK EMAIL SENT] Caso ${caseId.substring(0, 8)} inativo há ${Math.floor(hours)}h`);
 }
 
 export async function GET(req: NextRequest) {
-  // Proteção básica para a rota (ex: Vercel Cron)
+  // CRON_SECRET é OBRIGATÓRIO.
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error('CRON_SECRET não configurado. Bloqueando endpoint de cron.');
+    return NextResponse.json({ error: 'Servidor mal configurado.' }, { status: 503 });
+  }
   const authHeader = req.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 });
   }
 
+  const supabase = getSupabaseAdmin();
   if (!supabase) {
-    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
+    return NextResponse.json({ error: 'Supabase não configurado.' }, { status: 500 });
   }
 
   try {
@@ -73,6 +76,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, alerted: alertedCases });
   } catch (error: any) {
     console.error('Admin Alert Cron Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
   }
 }

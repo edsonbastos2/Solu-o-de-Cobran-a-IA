@@ -12,7 +12,7 @@ export function Header() {
   const pathname = usePathname();
   const { user, profile } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isSuperAdmin = user?.email === 'bastose132@gmail.com';
+  const isSuperAdmin = profile?.is_super_admin === true;
 
   const userName = profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Painel do Advogado');
 
