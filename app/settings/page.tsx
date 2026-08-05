@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Header } from '@/components/header';
-import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, AlertTriangle, Bot } from 'lucide-react';
+import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, AlertTriangle, Bot, Send } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneInput } from '@/lib/utils';
 import { CheckCircle2 } from 'lucide-react';
@@ -13,12 +13,15 @@ export default function SettingsPage() {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [messagingProvider, setMessagingProvider] = useState('whatsapp');
   const [zapiInstance, setZapiInstance] = useState('');
   const [zapiKey, setZapiKey] = useState('');
   const [zapiClientToken, setZapiClientToken] = useState('');
+  const [telegramBotToken, setTelegramBotToken] = useState('');
 
-  const [aiProvider, setAiProvider] = useState('gemini');
-  const [aiModel, setAiModel] = useState('gemini-3.5-flash');
+  const [aiProvider, setAiProvider] = useState('opencode');
+  const [aiModel, setAiModel] = useState('deepseek-v4-flash');
+  const [opencodeKey, setOpencodeKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
@@ -44,8 +47,9 @@ export default function SettingsPage() {
           setName(p.name || '');
           setPhone(p.phone ? formatPhoneInput(p.phone) : '');
           setZapiInstance(p.zapi_instance || '');
-          setAiProvider(p.ai_provider || 'gemini');
-          setAiModel(p.ai_model || 'gemini-3.5-flash');
+          setMessagingProvider(p.messaging_provider || 'whatsapp');
+          setAiProvider(p.ai_provider || 'opencode');
+          setAiModel(p.ai_model || 'deepseek-v4-flash');
           setOllamaUrl(p.ollama_base_url || 'http://localhost:11434');
         }
         if (json.secrets) setSecrets(json.secrets);
@@ -71,12 +75,15 @@ export default function SettingsPage() {
       const payload: Record<string, unknown> = {
         name, phone,
         zapi_instance: zapiInstance,
+        messaging_provider: messagingProvider,
         ai_provider: aiProvider,
         ai_model: aiModel,
         ollama_base_url: ollamaUrl,
       };
       if (zapiKey !== '') payload.zapi_key = zapiKey;
       if (zapiClientToken !== '') payload.zapi_client_token = zapiClientToken;
+      if (telegramBotToken !== '') payload.telegram_bot_token = telegramBotToken;
+      if (opencodeKey !== '') payload.opencode_api_key = opencodeKey;
       if (geminiKey !== '') payload.gemini_api_key = geminiKey;
       if (openaiKey !== '') payload.openai_api_key = openaiKey;
       if (anthropicKey !== '') payload.anthropic_api_key = anthropicKey;
@@ -91,8 +98,8 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error(data.error || 'Erro ao salvar');
 
       // Limpa os campos de segredo após salvar com sucesso
-      setZapiKey(''); setZapiClientToken('');
-      setGeminiKey(''); setOpenaiKey(''); setAnthropicKey(''); setOpenrouterKey('');
+      setZapiKey(''); setZapiClientToken(''); setTelegramBotToken('');
+      setOpencodeKey(''); setGeminiKey(''); setOpenaiKey(''); setAnthropicKey(''); setOpenrouterKey('');
 
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
@@ -213,46 +220,84 @@ export default function SettingsPage() {
                   <div className="bg-[#111318] border border-white/5 rounded-xl p-6 shadow-sm mb-8">
                     <h2 className="text-lg font-semibold text-white mb-2 flex items-center">
                       <Zap className="w-5 h-5 mr-2 text-blue-500" />
-                      Integração WhatsApp (Z-API)
+                      Integração de Mensageria
                     </h2>
-                    <p className="text-sm text-slate-500 mb-6">Configure suas credenciais da Z-API para habilitar o envio e recebimento de mensagens automatizadas da IA.</p>
+                    <p className="text-sm text-slate-500 mb-6">Escolha o provedor de mensagens e configure as credenciais para envio automatizado pela IA.</p>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">ID da Instância (Instance ID)</label>
-                        <input 
-                          type="text"
-                          value={zapiInstance}
-                          onChange={(e) => setZapiInstance(e.target.value)}
-                          placeholder="Ex: 3AXXXXXX..."
-                          className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token da Instância
-                          {secrets.zapi_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
-                        </label>
-                        <input
-                          type="password"
-                          value={zapiKey}
-                          onChange={(e) => setZapiKey(e.target.value)}
-                          placeholder={secrets.zapi_key_set ? '•••••• (preencha para substituir)' : 'Ex: A5B2C...'}
-                          className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token de Segurança (Client-Token)
-                          {secrets.zapi_client_token_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
-                        </label>
-                        <input
-                          type="password"
-                          value={zapiClientToken}
-                          onChange={(e) => setZapiClientToken(e.target.value)}
-                          placeholder={secrets.zapi_client_token_set ? '•••••• (preencha para substituir)' : '••••••••••••••••'}
-                          className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                        />
-                      </div>
+                    <div className="mb-4">
+                      <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Provedor de Mensagens</label>
+                      <select
+                        value={messagingProvider}
+                        onChange={(e) => setMessagingProvider(e.target.value)}
+                        className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                      >
+                        <option value="whatsapp">WhatsApp (Z-API)</option>
+                        <option value="telegram">Telegram (Bot API)</option>
+                      </select>
                     </div>
+
+                    {messagingProvider === 'whatsapp' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                        <p className="text-xs text-slate-500 sm:col-span-2">Configure suas credenciais da Z-API para habilitar o envio e recebimento de mensagens via WhatsApp.</p>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">ID da Instância (Instance ID)</label>
+                          <input 
+                            type="text"
+                            value={zapiInstance}
+                            onChange={(e) => setZapiInstance(e.target.value)}
+                            placeholder="Ex: 3AXXXXXX..."
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token da Instância
+                            {secrets.zapi_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                          </label>
+                          <input
+                            type="password"
+                            value={zapiKey}
+                            onChange={(e) => setZapiKey(e.target.value)}
+                            placeholder={secrets.zapi_key_set ? '•••••• (preencha para substituir)' : 'Ex: A5B2C...'}
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token de Segurança (Client-Token)
+                            {secrets.zapi_client_token_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                          </label>
+                          <input
+                            type="password"
+                            value={zapiClientToken}
+                            onChange={(e) => setZapiClientToken(e.target.value)}
+                            placeholder={secrets.zapi_client_token_set ? '•••••• (preencha para substituir)' : '••••••••••••••••'}
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {messagingProvider === 'telegram' && (
+                      <div className="space-y-4 pt-4 border-t border-white/5">
+                        <p className="text-xs text-slate-500">Configure seu Bot do Telegram para envio e recebimento de mensagens automatizadas.</p>
+                        <ol className="text-xs text-slate-500 space-y-1 list-decimal list-inside">
+                          <li>Crie um bot no Telegram via <a href="https://t.me/BotFather" target="_blank" className="text-blue-400 hover:underline">@BotFather</a></li>
+                          <li>Copie o Token de acesso gerado e cole abaixo</li>
+                          <li>Configure o webhook apontando para <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">{process.env.NEXT_PUBLIC_APP_URL || 'https://seu-app.com'}/api/webhook/telegram</code></li>
+                        </ol>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token do Bot
+                            {secrets.telegram_bot_token_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                          </label>
+                          <input
+                            type="password"
+                            value={telegramBotToken}
+                            onChange={(e) => setTelegramBotToken(e.target.value)}
+                            placeholder={secrets.telegram_bot_token_set ? '•••••• (preencha para substituir)' : '123456:ABC-DEF1234gh...'}
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -274,6 +319,7 @@ export default function SettingsPage() {
                           onChange={(e) => setAiProvider(e.target.value)}
                           className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                         >
+                          <option value="opencode">OpenCode Zen (DeepSeek/Recomendado)</option>
                           <option value="gemini">Google Gemini</option>
                           <option value="openai">OpenAI (ChatGPT)</option>
                           <option value="anthropic">Anthropic (Claude)</option>
@@ -297,6 +343,12 @@ export default function SettingsPage() {
                             onChange={(e) => setAiModel(e.target.value)}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           >
+                            {aiProvider === 'opencode' && (
+                              <>
+                                <option value="deepseek-v4-pro">DeepSeek V4 Pro (Extração precisa)</option>
+                                <option value="deepseek-v4-flash">DeepSeek V4 Flash (Rápido/Econômico)</option>
+                              </>
+                            )}
                             {aiProvider === 'gemini' && (
                               <>
                                 <option value="gemini-3.5-flash">Gemini 3.5 Flash (Rápido/Recomendado)</option>
@@ -323,7 +375,22 @@ export default function SettingsPage() {
                     <div className="pt-4 border-t border-white/5 space-y-4">
                       <h3 className="text-sm font-semibold text-slate-300">Chaves de API Personalizadas</h3>
                       <p className="text-xs text-slate-500 mb-4">Se não preenchidas, será utilizada a chave global configurada na plataforma.</p>
-                      
+                       
+                      {aiProvider === 'opencode' && (
+                        <div>
+                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenCode Zen API Key
+                            {secrets.opencode_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
+                          </label>
+                          <input
+                            type="password"
+                            value={opencodeKey}
+                            onChange={(e) => setOpencodeKey(e.target.value)}
+                            placeholder={secrets.opencode_api_key_set ? '•••••• (preencha para substituir)' : 'sk-...'}
+                            className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                          />
+                        </div>
+                      )}
+
                       {aiProvider === 'gemini' && (
                         <div>
                           <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Google Gemini API Key

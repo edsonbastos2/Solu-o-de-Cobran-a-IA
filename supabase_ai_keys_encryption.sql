@@ -79,13 +79,15 @@ $$;
 -- Antes de rodar, faça backup da tabela profiles.
 --
 -- UPDATE public.profiles
---   SET gemini_api_key     = public.ai_encrypt(gemini_api_key),
+--   SET opencode_api_key  = public.ai_encrypt(opencode_api_key),
+--       gemini_api_key     = public.ai_encrypt(gemini_api_key),
 --       openai_api_key     = public.ai_encrypt(openai_api_key),
 --       anthropic_api_key  = public.ai_encrypt(anthropic_api_key),
 --       openrouter_api_key = public.ai_encrypt(openrouter_api_key),
 --       zapi_key           = public.ai_encrypt(zapi_key),
 --       zapi_client_token  = public.ai_encrypt(zapi_client_token)
--- WHERE gemini_api_key IS NOT NULL
+-- WHERE opencode_api_key IS NOT NULL
+--    OR gemini_api_key IS NOT NULL
 --    OR openai_api_key IS NOT NULL
 --    OR anthropic_api_key IS NOT NULL
 --    OR openrouter_api_key IS NOT NULL
@@ -97,7 +99,7 @@ $$;
 -- A leitura para o próprio usuário é mediada por API server-side.
 -- Revoga acesso direto via API anônima/gráfica para as colunas sensíveis.
 -- --------------------------------------------------------------------
-REVOKE UPDATE (gemini_api_key, openai_api_key, anthropic_api_key, openrouter_api_key, zapi_key, zapi_client_token)
+REVOKE UPDATE (opencode_api_key, gemini_api_key, openai_api_key, anthropic_api_key, openrouter_api_key, zapi_key, zapi_client_token, telegram_bot_token)
   ON public.profiles FROM anon, authenticated;
 
 -- --------------------------------------------------------------------
@@ -108,6 +110,7 @@ CREATE OR REPLACE FUNCTION public.get_user_ai_keys(p_user_id UUID)
 RETURNS TABLE (
   ai_provider TEXT,
   ai_model TEXT,
+  opencode_api_key TEXT,
   gemini_api_key TEXT,
   openai_api_key TEXT,
   anthropic_api_key TEXT,
@@ -115,7 +118,9 @@ RETURNS TABLE (
   ollama_base_url TEXT,
   zapi_instance TEXT,
   zapi_key TEXT,
-  zapi_client_token TEXT
+  zapi_client_token TEXT,
+  messaging_provider TEXT,
+  telegram_bot_token TEXT
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -125,6 +130,7 @@ BEGIN
   SELECT
     p.ai_provider,
     p.ai_model,
+    public.ai_decrypt(p.opencode_api_key),
     public.ai_decrypt(p.gemini_api_key),
     public.ai_decrypt(p.openai_api_key),
     public.ai_decrypt(p.anthropic_api_key),
@@ -132,11 +138,14 @@ BEGIN
     p.ollama_base_url,
     p.zapi_instance,
     public.ai_decrypt(p.zapi_key),
-    public.ai_decrypt(p.zapi_client_token)
+    public.ai_decrypt(p.zapi_client_token),
+    p.messaging_provider,
+    public.ai_decrypt(p.telegram_bot_token)
   INTO
-    ai_provider, ai_model, gemini_api_key, openai_api_key,
+    ai_provider, ai_model, opencode_api_key, gemini_api_key, openai_api_key,
     anthropic_api_key, openrouter_api_key, ollama_base_url,
-    zapi_instance, zapi_key, zapi_client_token
+    zapi_instance, zapi_key, zapi_client_token,
+    messaging_provider, telegram_bot_token
   FROM public.profiles p
   WHERE p.id = p_user_id;
   RETURN NEXT;

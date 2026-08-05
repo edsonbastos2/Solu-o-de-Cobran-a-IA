@@ -7,10 +7,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   phone TEXT,
   zapi_instance TEXT,
   zapi_key TEXT,
-  ai_provider TEXT DEFAULT 'gemini',
-  ai_model TEXT DEFAULT 'gemini-3.5-flash',
+  zapi_client_token TEXT,
+  messaging_provider TEXT DEFAULT 'whatsapp',
+  telegram_bot_token TEXT,
+  ai_provider TEXT DEFAULT 'opencode',
+  ai_model TEXT DEFAULT 'deepseek-v4-flash',
+  opencode_api_key TEXT,
   gemini_api_key TEXT,
-  openai_api_key TEXT,
   anthropic_api_key TEXT,
   openrouter_api_key TEXT,
   ollama_base_url TEXT DEFAULT 'http://localhost:11434',
@@ -19,8 +22,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 );
 
 -- 2. Garante que as colunas existam caso a tabela já tenha sido criada anteriormente
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ai_provider TEXT DEFAULT 'gemini';
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ai_model TEXT DEFAULT 'gemini-3.5-flash';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ai_provider TEXT DEFAULT 'opencode';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ai_model TEXT DEFAULT 'deepseek-v4-flash';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS opencode_api_key TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS gemini_api_key TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS openai_api_key TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS anthropic_api_key TEXT;
@@ -28,6 +32,8 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS openrouter_api_key TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ollama_base_url TEXT DEFAULT 'http://localhost:11434';
 
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS zapi_client_token TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS messaging_provider TEXT DEFAULT 'whatsapp';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS telegram_bot_token TEXT;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- 3. Cria políticas de segurança
@@ -71,6 +77,7 @@ CREATE TRIGGER on_auth_user_created
 -- CORREÇÃO PARA A TABELA CASES:
 -- Se a tabela cases tem RLS ativado (row-level security), precisamos garantir que ela tem a coluna user_id
 ALTER TABLE public.cases ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.cases ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
 
 -- Atualizar política de inserção de casos para exigir o auth.uid()
 -- CREATE POLICY "Usuários podem inserir os próprios casos" ON public.cases FOR INSERT WITH CHECK (auth.uid() = user_id);

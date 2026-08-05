@@ -1,10 +1,11 @@
-import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendMessage } from '@/lib/messaging';
 import { serverError } from '@/lib/api-auth';
+
+const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 
 const SYSTEM_PROMPT = `Você é um agente de cobrança de dívidas educado, focado e objetivo trabalhando para um escritório de advocacia.
 Seu objetivo é iniciar a abordagem para tentar fechar um acordo de pagamento com o devedor.
@@ -45,9 +46,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch AI configuration from user profile (via RPC com chaves descriptografadas)
-    let aiProvider = 'gemini';
-    let aiModel = 'gemini-3.5-flash';
-    let apiKey = process.env.GEMINI_API_KEY || '';
+    let aiProvider = 'opencode';
+    let aiModel = 'deepseek-v4-flash';
+    let apiKey = process.env.OPENCODE_API_KEY || '';
     let ollamaBaseUrl = 'http://localhost:11434';
 
     if (caseData.user_id) {
@@ -60,10 +61,12 @@ export async function POST(req: NextRequest) {
       }
 
       if (profile) {
-        aiProvider = profile.ai_provider || 'gemini';
-        aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : aiProvider === 'openrouter' ? 'meta-llama/llama-3-8b-instruct:free' : 'claude-3-haiku');
+        aiProvider = profile.ai_provider || 'opencode';
+        aiModel = profile.ai_model || (aiProvider === 'opencode' ? 'deepseek-v4-flash' : aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : aiProvider === 'openrouter' ? 'meta-llama/llama-3-8b-instruct:free' : 'claude-3-haiku');
 
-        if (aiProvider === 'gemini') {
+        if (aiProvider === 'opencode') {
+          apiKey = profile.opencode_api_key || process.env.OPENCODE_API_KEY || '';
+        } else if (aiProvider === 'gemini') {
           apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
         } else if (aiProvider === 'openai') {
           apiKey = profile.openai_api_key || process.env.OPENAI_API_KEY || '';
@@ -92,17 +95,18 @@ export async function POST(req: NextRequest) {
     let aiText = "Olá, precisamos falar sobre uma pendência. Poderia confirmar se estou falando com " + caseData.name + "?";
 
     try {
-      if (aiProvider === 'gemini') {
-        const ai = new GoogleGenAI({ apiKey });
-        const response = await ai.models.generateContent({
+      if (aiProvider === 'opencode') {
+        const openai = new OpenAI({ apiKey, baseURL: OPENCODE_BASE_URL });
+        const response = await openai.chat.completions.create({
           model: aiModel,
-          contents: "Gere a primeira mensagem de contato baseada nas instruções.",
-          config: {
-            systemInstruction: systemPrompt,
-            temperature: 0.3
-          }
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: 'Gere a primeira mensagem de contato baseada nas instruções.' }
+          ],
+          temperature: 0.3,
+          max_tokens: 2048
         });
-        if (response.text) aiText = response.text;
+        if (response.choices[0].message.content) aiText = response.choices[0].message.content;
       } else if (aiProvider === 'openai') {
         const openai = new OpenAI({ apiKey });
         const response = await openai.chat.completions.create({
@@ -154,9 +158,10 @@ export async function POST(req: NextRequest) {
       content: aiText
     });
 
-    if (caseData.phone) {
-      sendWhatsAppMessage(caseData.phone, aiText, caseData.user_id).catch(err => {
-        console.error("Error in background WhatsApp send:", err);
+    if (caseData.phone || caseData.telegram_chat_id) {
+      const destination = caseData.telegram_chat_id || caseData.phone;
+      sendMessage(destination, aiText, caseData.user_id).catch(err => {
+        console.error("Error in background message send:", err);
       });
     }
 

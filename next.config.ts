@@ -37,7 +37,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://*.supabase.co https://api.z-api.io https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://openrouter.ai",
+      "connect-src 'self' https://*.supabase.co https://api.z-api.io https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://openrouter.ai https://opencode.ai",
       "frame-ancestors 'none'",
       "form-action 'self'",
       "base-uri 'self'",

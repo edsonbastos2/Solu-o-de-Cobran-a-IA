@@ -1,5 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
-import { NextRequest, NextResponse } from "next/server";
+import OpenAI from 'openai';
+import { NextRequest, NextResponse } from 'next/server';
+
+const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 
 const SYSTEM_INSTRUCTION = `Você é o assistente virtual (Agente Especialista) de uma plataforma SaaS multiempresa de recuperação de crédito baseada em Inteligência Artificial, chamada CobrançaIA.
 
@@ -58,32 +60,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid messages format" }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENCODE_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ 
-        text: "O assistente virtual está em modo offline. Defina a variável GEMINI_API_KEY para habilitar respostas completas por IA." 
+      return NextResponse.json({
+        text: "O assistente virtual está em modo offline. Defina a variável OPENCODE_API_KEY para habilitar respostas completas por IA."
       });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const openai = new OpenAI({ apiKey, baseURL: OPENCODE_BASE_URL });
 
-    const contents = messages.map((m: any) => ({
-      role: m.role,
-      parts: [{ text: m.content }]
+    const formattedMessages = messages.map((m: any) => ({
+      role: m.role === 'model' ? 'assistant' : m.role,
+      content: m.content
     }));
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: contents,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.3,
-      }
+    const response = await openai.chat.completions.create({
+      model: "deepseek-v4-flash",
+      messages: [
+        { role: "system", content: SYSTEM_INSTRUCTION },
+        ...formattedMessages
+      ],
+      temperature: 0.3,
+      max_tokens: 2048
     });
 
-    return NextResponse.json({ text: response.text || "Desculpe, não consegui processar a resposta." });
-  } catch (error) {
+    return NextResponse.json({ text: response.choices[0].message.content || "Desculpe, não consegui processar a resposta." });
+  } catch (error: any) {
     console.error("Error in help-chat API:", error);
-    return NextResponse.json({ error: "Failed to generate response" }, { status: 500 });
+    const message = error?.message || error?.toString() || "Unknown error";
+    return NextResponse.json({
+      error: message,
+      tip: "Verifique se OPENCODE_API_KEY está correta e se a chave tem créditos em https://opencode.ai/auth"
+    }, { status: 500 });
   }
 }

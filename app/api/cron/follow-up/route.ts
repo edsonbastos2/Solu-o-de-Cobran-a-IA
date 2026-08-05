@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendMessage } from '@/lib/messaging';
 
 export async function GET(req: NextRequest) {
   // CRON_SECRET é OBRIGATÓRIO. Configurar em .env.
@@ -55,9 +55,10 @@ export async function GET(req: NextRequest) {
             const followUpText = `Olá, ${firstName}! Tudo bem? Estou passando para lembrar da nossa proposta. Podemos continuar a negociação? Qualquer dúvida estou à disposição.`;
 
             if (lastMessage.content !== followUpText) {
-              if (c.phone) {
-                await sendWhatsAppMessage(c.phone, followUpText, c.user_id).catch(err => {
-                  console.error(`Erro ao enviar WhatsApp follow-up para ${c.phone}:`, err);
+              if (c.phone || c.telegram_chat_id) {
+                const destination = c.telegram_chat_id || c.phone;
+                await sendMessage(destination, followUpText, c.user_id).catch(err => {
+                  console.error(`Erro ao enviar follow-up para ${destination}:`, err);
                 });
               }
 

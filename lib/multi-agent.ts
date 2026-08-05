@@ -1,8 +1,9 @@
-import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabase } from '@/lib/supabase';
 import { getCollectionStage } from '@/lib/finance';
+
+const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 
 export interface AgentConfig {
   id: string;
@@ -32,7 +33,7 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     system_prompt: `Você é o Supervisor IA de uma plataforma corporativa de recuperação de crédito.
 Sua função é analisar a mensagem recebida do devedor e determinar qual especialista (Cobrança, Negociação, Financeiro, Jurídico ou Análise de Crédito) deve responder.
 Se a mensagem contiver múltiplos aspectos, oriente o especialista adequado com diretrizes claras e garanta que o atendimento seja cortês, alinhado à lei brasileira (Art. 42 do CDC) e focado em acordo.`,
-    model: 'gemini-3.5-flash',
+    model: 'deepseek-v4-flash',
     temperature: 0.1,
     max_discount: 0,
     tone: 'firme',
@@ -49,7 +50,7 @@ Se a mensagem contiver múltiplos aspectos, oriente o especialista adequado com 
 Seu foco é lembrar educadamente o cliente sobre faturas a vencer ou recém-vencidas (1 a 30 dias).
 Ofereça a 2ª via do boleto/Pix por WhatsApp e pergunte se houve algum imprevisto técnico de forma totalmente empática.
 Nesta etapa preventiva/amigável, não conceda descontos agressivos sem necessidade.`,
-    model: 'gemini-3.5-flash',
+    model: 'deepseek-v4-flash',
     temperature: 0.2,
     max_discount: 5,
     tone: 'empatico',
@@ -67,7 +68,7 @@ Seu objetivo é fechar um acordo firme de pagamento com o devedor.
 Você pode oferecer parcelamentos flexíveis com entrada mínima ou desconto à vista, RESPEITANDO RIGOROSAMENTE a margem limite configurada ({effective_max_discount}%).
 Se o devedor fizer uma contraproposta válida, aceite e encerre a conversa emitindo o marcador [ACORDO_FECHADO].
 Se o devedor recusar de forma irredutível, encerre com o marcador [HANDOFF].`,
-    model: 'gemini-3.5-flash',
+    model: 'deepseek-v4-flash',
     temperature: 0.3,
     max_discount: 20,
     tone: 'negociador',
@@ -83,7 +84,7 @@ Se o devedor recusar de forma irredutível, encerre com o marcador [HANDOFF].`,
     system_prompt: `Você é o Especialista Financeiro da operação.
 Você é responsável por esclarecer o detalhamento exato da dívida (valor original + juros de mora + multa contratual).
 Explique com clareza matemática transparente como os valores foram consolidados, confirme dados do PIX/Boleto e garanta segurança nas transações.`,
-    model: 'gemini-3.5-flash',
+    model: 'deepseek-v4-flash',
     temperature: 0.1,
     max_discount: 10,
     tone: 'analitico',
@@ -99,7 +100,7 @@ Explique com clareza matemática transparente como os valores foram consolidados
     system_prompt: `Você é o Consultor Jurídico e Notificador Extrajudicial.
 Sua atuação ocorre quando a dívida ultrapassa 60+ dias ou quando o devedor alega que processará a empresa ou solicita formalização legal.
 Mantenha postura estritamente técnica, altamente respeitosa e formal. Informe sobre as consequências legais do inadimplemento (inclusão nos órgãos de proteção ao crédito, protesto em cartório e eventual ajuizamento), sem jamais ameaçar, xingar ou constranger. Ofereça uma última oportunidade de conciliação amigável antes do envio ao contencioso.`,
-    model: 'gemini-3.5-flash',
+    model: 'deepseek-v4-flash',
     temperature: 0.2,
     max_discount: 15,
     tone: 'formal',
@@ -119,7 +120,7 @@ Verifique:
 2. Respeito à margem de desconto limite.
 3. Tom profissional e objetivo.
 Se a mensagem estiver em conformidade, aprove. Se houver irregularidade, corrija e ajuste a redação imediatamente.`,
-    model: 'gemini-3.5-flash',
+    model: 'deepseek-v4-flash',
     temperature: 0.1,
     max_discount: 0,
     tone: 'analitico',
@@ -135,7 +136,7 @@ Se a mensagem estiver em conformidade, aprove. Se houver irregularidade, corrija
     system_prompt: `Você é o Analista de Risco e Crédito.
 Sua função é avaliar o histórico do devedor, dias de atraso e comportamento na conversa para classificar o risco de inadimplência em Baixo, Médio ou Alto.
 Com base no risco, recomende a melhor estrutura de parcelamento e a entrada ideal para garantir que o acordo seja honrado.`,
-    model: 'gemini-3.5-flash',
+    model: 'deepseek-v4-flash',
     temperature: 0.2,
     max_discount: 25,
     tone: 'analitico',
@@ -173,16 +174,16 @@ export async function processMultiAgentSimulation(
   agentsList: AgentConfig[] = DEFAULT_AGENTS,
   apiKeyOverride?: string
 ) {
-  const apiKey = apiKeyOverride || process.env.GEMINI_API_KEY || '';
+  const apiKey = apiKeyOverride || process.env.OPENCODE_API_KEY || '';
   if (!apiKey) {
-    throw new Error("Chave de API do Gemini não configurada.");
+    throw new Error("Chave de API do OpenCode não configurada.");
   }
 
   const activeAgents = agentsList.filter(a => a.is_active);
   const supervisor = activeAgents.find(a => a.role_type === 'supervisor') || DEFAULT_AGENTS[0];
   const qualidade = activeAgents.find(a => a.role_type === 'qualidade') || DEFAULT_AGENTS[5];
 
-  const ai = new GoogleGenAI({ apiKey });
+  const openai = new OpenAI({ apiKey, baseURL: OPENCODE_BASE_URL });
 
   // 1. Supervisor classification
   const supervisorPrompt = `${supervisor.system_prompt}
@@ -211,12 +212,13 @@ Responda em formato JSON válido com a estrutura:
   };
 
   try {
-    const supervisorRes = await ai.models.generateContent({
-      model: supervisor.model || 'gemini-3.5-flash',
-      contents: supervisorPrompt,
-      config: { responseMimeType: 'application/json' }
+    const supervisorRes = await openai.chat.completions.create({
+      model: supervisor.model || 'deepseek-v4-flash',
+      messages: [{ role: 'user', content: supervisorPrompt }],
+      response_format: { type: 'json_object' },
+      max_tokens: 512
     });
-    const parsed = JSON.parse(supervisorRes.text || '{}');
+    const parsed = JSON.parse(supervisorRes.choices[0].message.content || '{}');
     if (parsed.selected_role) {
       routing = parsed;
     }
@@ -225,8 +227,8 @@ Responda em formato JSON válido com a estrutura:
   }
 
   // 2. Select Specialist
-  const specialist = activeAgents.find(a => a.role_type === routing.selected_role) || 
-    activeAgents.find(a => a.role_type === 'negociacao') || 
+  const specialist = activeAgents.find(a => a.role_type === routing.selected_role) ||
+    activeAgents.find(a => a.role_type === 'negociacao') ||
     DEFAULT_AGENTS[2];
 
   // 3. Generate Specialist Response
@@ -247,13 +249,14 @@ MENSAGEM DO DEVEDOR:
 Escreva a resposta direta que será enviada ao WhatsApp do devedor. Mantenha o tom ${specialist.tone}.
 Se o acordo for fechado, inclua a tag [ACORDO_FECHADO]. Se necessitar intervenção humana, inclua [HANDOFF].`;
 
-  const specialistRes = await ai.models.generateContent({
-    model: specialist.model || 'gemini-3.5-flash',
-    contents: specialistPrompt,
-    config: { temperature: Number(specialist.temperature) || 0.2 }
+  const specialistRes = await openai.chat.completions.create({
+    model: specialist.model || 'deepseek-v4-flash',
+    messages: [{ role: 'user', content: specialistPrompt }],
+    temperature: Number(specialist.temperature) || 0.2,
+    max_tokens: 1024
   });
 
-  const rawDraft = specialistRes.text || "Desculpe, não entendi sua solicitação.";
+  const rawDraft = specialistRes.choices[0].message.content || "Desculpe, não entendi sua solicitação.";
 
   // 4. Quality & Compliance Audit
   let finalResponse = rawDraft;
@@ -282,13 +285,14 @@ Analise e retorne em JSON:
   "corrected_response": "resposta corrigida caso approved seja false ou necessite pequenos ajustes de tom"
 }`;
 
-      const qualityRes = await ai.models.generateContent({
-        model: qualidade.model || 'gemini-3.5-flash',
-        contents: qualityPrompt,
-        config: { responseMimeType: 'application/json' }
+      const qualityRes = await openai.chat.completions.create({
+        model: qualidade.model || 'deepseek-v4-flash',
+        messages: [{ role: 'user', content: qualityPrompt }],
+        response_format: { type: 'json_object' },
+        max_tokens: 1024
       });
 
-      const qParsed = JSON.parse(qualityRes.text || '{}');
+      const qParsed = JSON.parse(qualityRes.choices[0].message.content || '{}');
       if (qParsed.feedback) {
         qualityAudit = {
           approved: qParsed.approved ?? true,

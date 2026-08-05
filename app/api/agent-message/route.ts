@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendMessage } from '@/lib/messaging';
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,9 +36,10 @@ export async function POST(req: NextRequest) {
       throw insertError;
     }
 
-    // 3. Send message to WhatsApp via Z-API
-    if (caseData.phone) {
-      await sendWhatsAppMessage(caseData.phone, message.trim(), caseData.user_id);
+    // 3. Send message via configured provider
+    if (caseData.phone || caseData.telegram_chat_id) {
+      const destination = caseData.telegram_chat_id || caseData.phone;
+      await sendMessage(destination, message.trim(), caseData.user_id);
     }
 
     // 4. Set case status to needs_attention (human takeover) if it was in_negotiation or not_started

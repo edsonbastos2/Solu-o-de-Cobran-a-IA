@@ -74,6 +74,7 @@ export interface Case {
   debtor_email?: string;
   debtor_document?: string;
   debtor_address?: string;
+  telegram_chat_id?: string;
 }
 
 export interface Message {

@@ -1,18 +1,17 @@
-import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendMessage } from '@/lib/messaging';
 import { getCollectionStage } from '@/lib/finance';
 import { fetchAgents, AgentConfig } from '@/lib/multi-agent';
 
-// Helper function for exponential backoff
+const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
+
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Helper function to call the selected AI provider
 async function callLLM(
   prompt: string,
   history: any[] | null,
@@ -25,39 +24,15 @@ async function callLLM(
   maxRetries = 3
 ): Promise<string> {
   let attempt = 0;
-  
+
   while (attempt < maxRetries) {
     try {
-      if (aiProvider === 'gemini') {
-        const ai = new GoogleGenAI({ apiKey });
-        
-        let contents: any[] = [];
-        if (history && history.length > 0) {
-           contents = history.map((msg: any) => ({
-            role: (msg.role === 'ai' || msg.role === 'human') ? 'model' : 'user',
-            parts: [{ text: msg.content }]
-          }));
-        }
-
-        const reqContents = history ? contents : [{ role: 'user', parts: [{ text: prompt }] }];
-
-        const response = await ai.models.generateContent({
-          model: aiModel,
-          contents: reqContents,
-          config: {
-            systemInstruction: history ? prompt : undefined,
-            temperature,
-            responseMimeType: responseFormat === 'json_object' ? 'application/json' : 'text/plain'
-          }
+      if (aiProvider === 'opencode' || aiProvider === 'openai' || aiProvider === 'ollama' || aiProvider === 'openrouter') {
+        const client = new OpenAI({
+          apiKey: aiProvider === 'openrouter' ? apiKey : (aiProvider === 'ollama' ? 'ollama' : apiKey),
+          baseURL: aiProvider === 'opencode' ? OPENCODE_BASE_URL : (aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : (aiProvider === 'ollama' ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` : undefined))
         });
-        return response.text || "";
-        
-      } else if (aiProvider === 'openai' || aiProvider === 'ollama' || aiProvider === 'openrouter') {
-        const client = new OpenAI({ 
-          apiKey: aiProvider === 'openrouter' ? apiKey : (aiProvider === 'ollama' ? 'ollama' : apiKey), 
-          baseURL: aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : (aiProvider === 'ollama' ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` : undefined) 
-        });
-        
+
         let messages: any[] = [];
         if (history) {
           messages.push({ role: 'system', content: prompt });
@@ -73,13 +48,14 @@ async function callLLM(
           model: aiModel,
           messages: messages,
           temperature,
-          response_format: responseFormat === 'json_object' ? { type: 'json_object' } : undefined
+          response_format: responseFormat === 'json_object' ? { type: 'json_object' as const } : undefined,
+          max_tokens: 2048
         });
         return response.choices[0].message.content || "";
 
       } else if (aiProvider === 'anthropic') {
         const anthropic = new Anthropic({ apiKey });
-        
+
         let messages: any[] = [];
         let system = "";
         if (history) {
@@ -99,20 +75,19 @@ async function callLLM(
           messages: messages,
           temperature
         });
-        
+
         if (response.content[0].type === 'text') {
           return response.content[0].text;
         }
         return "";
       }
-      
+
       return "";
     } catch (error: any) {
       attempt++;
-      
-      // Check for transient errors (503, 429, or network errors)
-      const isTransient = 
-        error.message?.includes('503') || 
+
+      const isTransient =
+        error.message?.includes('503') ||
         error.message?.includes('429') ||
         error.status === 503 ||
         error.status === 429 ||
@@ -125,11 +100,11 @@ async function callLLM(
         await sleep(delay);
         continue;
       }
-      
+
       throw error;
     }
   }
-  
+
   return "";
 }
 
@@ -138,7 +113,6 @@ export async function processChat(caseId: string, message: string) {
     throw new Error("Supabase não configurado.");
   }
 
-  // 1. Fetch case details
   const { data: caseData, error: caseError } = await supabase
     .from('cases')
     .select('*')
@@ -149,24 +123,21 @@ export async function processChat(caseId: string, message: string) {
     throw new Error("Caso não encontrado");
   }
 
-  // Calculate collection stage
   const stage = getCollectionStage(
     caseData.due_date,
     caseData.max_discount_margin,
     caseData.status
   );
 
-  // Fetch AI configuration from user profile
-  let aiProvider = 'gemini';
-  let aiModel = 'gemini-3.5-flash';
-  let apiKey = process.env.GEMINI_API_KEY || '';
+  let aiProvider = 'opencode';
+  let aiModel = 'deepseek-v4-flash';
+  let apiKey = process.env.OPENCODE_API_KEY || '';
   let ollamaBaseUrl = 'http://localhost:11434';
 
   if (caseData.user_id) {
     const admin = getSupabaseAdmin();
     let profile: any = null;
     if (admin) {
-      // Tenta o RPC que retorna chaves descriptografadas (se migration aplicada)
       const { data: rpcData, error: rpcErr } = await admin
         .rpc('get_user_ai_keys', { p_user_id: caseData.user_id });
       if (!rpcErr && rpcData && rpcData.length > 0) {
@@ -174,7 +145,6 @@ export async function processChat(caseId: string, message: string) {
       }
     }
     if (!profile) {
-      // Fallback: lê direto da tabela (chaves em texto puro se migration não aplicada)
       const client = admin || supabase;
       const { data } = await client!
         .from('profiles')
@@ -185,10 +155,12 @@ export async function processChat(caseId: string, message: string) {
     }
 
     if (profile) {
-      aiProvider = profile.ai_provider || 'gemini';
-      aiModel = profile.ai_model || (aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : aiProvider === 'openrouter' ? 'meta-llama/llama-3-8b-instruct:free' : 'claude-3-haiku');
+      aiProvider = profile.ai_provider || 'opencode';
+      aiModel = profile.ai_model || (aiProvider === 'opencode' ? 'deepseek-v4-flash' : aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : aiProvider === 'openrouter' ? 'meta-llama/llama-3-8b-instruct:free' : 'claude-3-haiku');
 
-      if (aiProvider === 'gemini') {
+      if (aiProvider === 'opencode') {
+        apiKey = profile.opencode_api_key || process.env.OPENCODE_API_KEY || '';
+      } else if (aiProvider === 'gemini') {
         apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
       } else if (aiProvider === 'openai') {
         apiKey = profile.openai_api_key || process.env.OPENAI_API_KEY || '';
@@ -207,7 +179,6 @@ export async function processChat(caseId: string, message: string) {
     throw new Error(`Chave de API não configurada para o provedor ${aiProvider}. Configure nas opções (Settings) ou nas variáveis de ambiente.`);
   }
 
-  // 2. Fetch conversation history
   const { data: historyData, error: historyError } = await supabase
     .from('messages')
     .select('*')
@@ -216,27 +187,23 @@ export async function processChat(caseId: string, message: string) {
 
   if (historyError) throw historyError;
 
-  // 3. Save user message
   await supabase.from('messages').insert({
     case_id: caseId,
     role: 'user',
     content: message
   });
-  
-  // Update history with new message for the AI call
+
   const currentHistory = [...(historyData || []), { role: 'user', content: message }];
 
-  // 4. Fetch Configured Agents
   const agentsList = await fetchAgents(caseData.user_id);
   const activeAgents = agentsList.filter(a => a.is_active);
   const supervisor = activeAgents.find(a => a.role_type === 'supervisor');
   const qualidade = activeAgents.find(a => a.role_type === 'qualidade');
-  
+
   let aiText = "Desculpe, ocorreu um erro de comunicação com a inteligência artificial.";
-  
+
   try {
     if (!supervisor || activeAgents.length <= 1) {
-      // Fallback to single agent mode if multi-agent is not configured properly
       aiText = await callLLM(
         `Você é um agente de cobrança. Cliente: ${caseData.name}. Dívida: R$ ${caseData.updated_value}. Atraso: ${stage.diasAtraso} dias. Desconto Máximo: ${stage.effectiveMaxDiscount}%. Responda a mensagem.`,
         currentHistory,
@@ -247,11 +214,8 @@ export async function processChat(caseId: string, message: string) {
         0.2
       );
     } else {
-      // MULTI-AGENT WORKFLOW
-      
-      // Step A: Supervisor Classification
       const supervisorPrompt = `${supervisor.system_prompt}
-  
+
 MENSAGEM DO DEVEDOR: "${message}"
 CASO:
 Cliente: ${caseData.name}
@@ -277,10 +241,9 @@ Retorne um JSON: { "selected_role": "role", "reasoning": "...", "guidance": "...
       } catch (err) {
         console.warn("Supervisor fallback reasoning triggered:", err);
       }
-      
-      // Step B: Specialist Draft
+
       const specialist = activeAgents.find(a => a.role_type === routing.selected_role) || activeAgents.find(a => a.role_type === 'negociacao') || activeAgents[0];
-      
+
       const specialistPrompt = `${specialist.system_prompt.replace(/{effective_max_discount}/g, stage.effectiveMaxDiscount.toString())}
 
 DIRETRIZES DO SUPERVISOR:
@@ -296,12 +259,11 @@ Se o acordo for fechado, inclua a tag [ACORDO_FECHADO]. Se necessitar intervenç
 
       const rawDraft = await callLLM(specialistPrompt, currentHistory, aiProvider, specialist.model || aiModel, apiKey, ollamaBaseUrl, Number(specialist.temperature) || 0.2);
       aiText = rawDraft || "Desculpe, não entendi sua solicitação.";
-      
-      // Step C: Quality Check
+
       if (qualidade && qualidade.is_active) {
         try {
           const qualityPrompt = `${qualidade.system_prompt}
-  
+
 REGRAS OBRIGATÓRIAS:
 - Proibido qualquer tom ameaçador ou abusivo (CDC Art. 42).
 - Desconto não pode ultrapassar ${stage.effectiveMaxDiscount}%.
@@ -310,7 +272,7 @@ RESPOSTA GERADA PELO ESPECIALISTA (${specialist.name}):
 "${rawDraft}"
 
 Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "...", "corrected_response": "..." }`;
-          
+
           const qualityRes = await callLLM(qualityPrompt, null, aiProvider, qualidade.model || aiModel, apiKey, ollamaBaseUrl, Number(qualidade.temperature) || 0.1, 'json_object');
           const qParsed = JSON.parse(qualityRes.replace(/```json/g, '').replace(/```/g, '').trim());
           if (qParsed.corrected_response && (!qParsed.approved || qParsed.complianceScore < 90)) {
@@ -326,35 +288,33 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
     throw new Error(`Erro na IA: ${error.message || String(error)}`);
   }
 
-  // 5. Save AI response
   await supabase.from('messages').insert({
     case_id: caseId,
     role: 'ai',
     content: aiText
   });
 
-  // Clean up internal tags for WhatsApp sending
   const cleanAiText = aiText
     .replace(/\[HANDOFF\]/g, '')
     .replace(/\[ACORDO_FECHADO\]/g, '')
     .trim();
 
-  if (caseData.phone) {
-    sendWhatsAppMessage(caseData.phone, cleanAiText, caseData.user_id).catch(async err => {
-      console.error("Error in background WhatsApp send:", err);
-      
-      // Notify the dashboard if WhatsApp fails (e.g. session expired)
+  if (caseData.phone || caseData.telegram_chat_id) {
+    const destination = caseData.telegram_chat_id || caseData.phone;
+    sendMessage(destination, cleanAiText, caseData.user_id).catch(async err => {
+      console.error("Error in background message send:", err);
+
       if (supabase) {
+        const provider = caseData.telegram_chat_id ? 'Telegram' : 'WhatsApp';
         await supabase.from('messages').insert({
           case_id: caseId,
           role: 'system',
-          content: "Falha ao enviar mensagem via WhatsApp. Verifique sua conexão com o Z-API nas configurações."
+          content: `Falha ao enviar mensagem via ${provider}. Verifique suas configurações.`
         });
       }
     });
   }
 
-  // 6. Check for Handoff or Close
   let newStatus = caseData.status;
   if (newStatus === 'not_started') newStatus = 'in_negotiation';
   if (aiText.includes('[HANDOFF]') || stage.id === 'especializada') newStatus = 'needs_attention';

@@ -16,11 +16,12 @@ export async function requireUser(req: NextRequest): Promise<{ ctx: AuthContext 
   if (!user) {
     return { response: NextResponse.json({ error: 'Não autorizado.' }, { status: 401 }) };
   }
-  const { data: profile } = await supabase
+  const { data: profile, error: profileErr } = await supabase
     .from('profiles')
     .select('is_super_admin')
     .eq('id', user.id)
     .maybeSingle();
+  if (profileErr) console.error('[requireUser] profiles query error:', profileErr);
   return { ctx: { userId: user.id, isSuperAdmin: profile?.is_super_admin === true } };
 }
 
@@ -35,7 +36,10 @@ export async function requireSuperAdmin(req: NextRequest): Promise<{ ctx: AuthCo
 }
 
 /** Erro genérico 500 sem vazar detalhes internos. */
-export function serverError(logMessage: string, err?: unknown) {
+export function serverError(logMessage: string, err?: unknown, includeDebug?: boolean) {
   console.error(logMessage, err);
-  return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
+  const debug = includeDebug && err instanceof Error ? err.message : undefined;
+  const body: Record<string, unknown> = { error: 'Erro interno do servidor.' };
+  if (debug) body.debug = debug;
+  return NextResponse.json(body, { status: 500 });
 }
