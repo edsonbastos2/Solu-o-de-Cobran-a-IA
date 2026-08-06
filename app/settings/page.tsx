@@ -6,6 +6,7 @@ import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, Al
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneInput } from '@/lib/utils';
 import { CheckCircle2 } from 'lucide-react';
+import { fetchWithAuth } from '@/lib/api';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -35,11 +36,30 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const defaultModelForProvider = (provider: string) => {
+    switch (provider) {
+      case 'gemini': return 'gemini-3.5-flash';
+      case 'openai': return 'gpt-4o-mini';
+      case 'anthropic': return 'claude-3-haiku';
+      case 'openrouter': return 'meta-llama/llama-3-8b-instruct:free';
+      case 'ollama': return 'llama3';
+      default: return 'deepseek-v4-flash';
+    }
+  };
+
+  const modelIsValidForProvider = (provider: string, model: string) => {
+    if (provider === 'opencode') return ['deepseek-v4-pro', 'deepseek-v4-flash'].includes(model);
+    if (provider === 'gemini') return ['gemini-3.5-flash', 'gemini-3.1-pro'].includes(model);
+    if (provider === 'openai') return ['gpt-4o', 'gpt-4o-mini'].includes(model);
+    if (provider === 'anthropic') return ['claude-3-5-sonnet', 'claude-3-haiku'].includes(model);
+    return Boolean(model);
+  };
+
   useEffect(() => {
     async function loadProfile() {
       if (!user) return;
       try {
-        const res = await fetch('/api/settings');
+        const res = await fetchWithAuth('/api/settings');
         if (!res.ok) throw new Error('Falha ao carregar perfil');
         const json = await res.json();
         const p = json.profile;
@@ -48,8 +68,10 @@ export default function SettingsPage() {
           setPhone(p.phone ? formatPhoneInput(p.phone) : '');
           setZapiInstance(p.zapi_instance || '');
           setMessagingProvider(p.messaging_provider || 'whatsapp');
-          setAiProvider(p.ai_provider || 'opencode');
-          setAiModel(p.ai_model || 'deepseek-v4-flash');
+          const provider = p.ai_provider || 'opencode';
+          const model = p.ai_model || '';
+          setAiProvider(provider);
+          setAiModel(modelIsValidForProvider(provider, model) ? model : defaultModelForProvider(provider));
           setOllamaUrl(p.ollama_base_url || 'http://localhost:11434');
         }
         if (json.secrets) setSecrets(json.secrets);
@@ -89,7 +111,7 @@ export default function SettingsPage() {
       if (anthropicKey !== '') payload.anthropic_api_key = anthropicKey;
       if (openrouterKey !== '') payload.openrouter_api_key = openrouterKey;
 
-      const res = await fetch('/api/settings', {
+      const res = await fetchWithAuth('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -103,9 +125,9 @@ export default function SettingsPage() {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving profile:', err);
-      setError('Erro ao salvar as configurações.');
+      setError(err instanceof Error ? err.message : 'Erro ao salvar as configurações.');
     } finally {
       setSaving(false);
     }
@@ -174,11 +196,12 @@ export default function SettingsPage() {
                       <div className="flex-1 space-y-4 w-full">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Nome Completo</label>
+                            <label htmlFor="profile-name" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Nome Completo</label>
                             <div className="relative">
                               <User className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
                               <input 
-                                type="text"
+                                 id="profile-name"
+                                 type="text"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Ex: João Silva"
@@ -187,11 +210,12 @@ export default function SettingsPage() {
                             </div>
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">E-mail (Login)</label>
+                            <label htmlFor="profile-email" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">E-mail (Login)</label>
                             <div className="relative">
                               <Mail className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
                               <input 
-                                type="email"
+                                 id="profile-email"
+                                 type="email"
                                 disabled
                                 value={user?.email || ''}
                                 className="w-full bg-[#0e1014]/50 border border-white/5 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-500 cursor-not-allowed"
@@ -199,11 +223,12 @@ export default function SettingsPage() {
                             </div>
                           </div>
                           <div className="sm:col-span-2">
-                            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Telefone (WhatsApp)</label>
+                            <label htmlFor="profile-phone" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Telefone (WhatsApp)</label>
                             <div className="relative">
                               <MessageSquare className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
                               <input 
-                                type="text"
+                                 id="profile-phone"
+                                 type="text"
                                 value={phone}
                                 onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
                                 placeholder="(11) 99999-9999"
@@ -225,9 +250,10 @@ export default function SettingsPage() {
                     <p className="text-sm text-slate-500 mb-6">Escolha o provedor de mensagens e configure as credenciais para envio automatizado pela IA.</p>
                     
                     <div className="mb-4">
-                      <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Provedor de Mensagens</label>
+                       <label htmlFor="messaging-provider" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Provedor de Mensagens</label>
                       <select
-                        value={messagingProvider}
+                         id="messaging-provider"
+                         value={messagingProvider}
                         onChange={(e) => setMessagingProvider(e.target.value)}
                         className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                       >
@@ -240,9 +266,10 @@ export default function SettingsPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-white/5">
                         <p className="text-xs text-slate-500 sm:col-span-2">Configure suas credenciais da Z-API para habilitar o envio e recebimento de mensagens via WhatsApp.</p>
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">ID da Instância (Instance ID)</label>
+                           <label htmlFor="zapi-instance" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">ID da Instância (Instance ID)</label>
                           <input 
-                            type="text"
+                             id="zapi-instance"
+                             type="text"
                             value={zapiInstance}
                             onChange={(e) => setZapiInstance(e.target.value)}
                             placeholder="Ex: 3AXXXXXX..."
@@ -250,23 +277,25 @@ export default function SettingsPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token da Instância
+                           <label htmlFor="zapi-key" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token da Instância
                             {secrets.zapi_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                            type="password"
+                             id="zapi-key"
+                             type="password"
                             value={zapiKey}
                             onChange={(e) => setZapiKey(e.target.value)}
                             placeholder={secrets.zapi_key_set ? '•••••• (preencha para substituir)' : 'Ex: A5B2C...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         </div>
-                        <div className="sm:col-span-2">
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token de Segurança (Client-Token)
+                         <div className="sm:col-span-2">
+                           <label htmlFor="zapi-client-token" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token de Segurança (Client-Token)
                             {secrets.zapi_client_token_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                            type="password"
+                             id="zapi-client-token"
+                             type="password"
                             value={zapiClientToken}
                             onChange={(e) => setZapiClientToken(e.target.value)}
                             placeholder={secrets.zapi_client_token_set ? '•••••• (preencha para substituir)' : '••••••••••••••••'}
@@ -285,11 +314,12 @@ export default function SettingsPage() {
                           <li>Configure o webhook apontando para <code className="text-xs bg-slate-800 px-1 py-0.5 rounded">{process.env.NEXT_PUBLIC_APP_URL || 'https://seu-app.com'}/api/webhook/telegram</code></li>
                         </ol>
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token do Bot
+                           <label htmlFor="telegram-bot-token" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Token do Bot
                             {secrets.telegram_bot_token_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                            type="password"
+                             id="telegram-bot-token"
+                             type="password"
                             value={telegramBotToken}
                             onChange={(e) => setTelegramBotToken(e.target.value)}
                             placeholder={secrets.telegram_bot_token_set ? '•••••• (preencha para substituir)' : '123456:ABC-DEF1234gh...'}
@@ -313,10 +343,15 @@ export default function SettingsPage() {
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Provedor de IA</label>
+                         <label htmlFor="ai-provider" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Provedor de IA</label>
                         <select 
-                          value={aiProvider}
-                          onChange={(e) => setAiProvider(e.target.value)}
+                           id="ai-provider"
+                           value={aiProvider}
+                          onChange={(e) => {
+                            const provider = e.target.value;
+                            setAiProvider(provider);
+                            setAiModel(defaultModelForProvider(provider));
+                          }}
                           className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                         >
                           <option value="opencode">OpenCode Zen (DeepSeek/Recomendado)</option>
@@ -328,17 +363,19 @@ export default function SettingsPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Modelo</label>
+                         <label htmlFor="ai-model" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Modelo</label>
                         {aiProvider === 'ollama' || aiProvider === 'openrouter' ? (
                           <input 
-                            type="text"
+                             id="ai-model"
+                             type="text"
                             value={aiModel}
                             onChange={(e) => setAiModel(e.target.value)}
                             placeholder={aiProvider === 'openrouter' ? "Ex: meta-llama/llama-3-8b-instruct:free" : "Ex: llama3"}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         ) : (
-                          <select 
+                           <select
+                             id="ai-model"
                             value={aiModel}
                             onChange={(e) => setAiModel(e.target.value)}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
@@ -378,11 +415,12 @@ export default function SettingsPage() {
                        
                       {aiProvider === 'opencode' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenCode Zen API Key
+                           <label htmlFor="opencode-api-key" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenCode Zen API Key
                             {secrets.opencode_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                            type="password"
+                             id="opencode-api-key"
+                             type="password"
                             value={opencodeKey}
                             onChange={(e) => setOpencodeKey(e.target.value)}
                             placeholder={secrets.opencode_api_key_set ? '•••••• (preencha para substituir)' : 'sk-...'}
@@ -393,11 +431,12 @@ export default function SettingsPage() {
 
                       {aiProvider === 'gemini' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Google Gemini API Key
+                           <label htmlFor="gemini-api-key" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Google Gemini API Key
                             {secrets.gemini_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                            type="password"
+                             id="gemini-api-key"
+                             type="password"
                             value={geminiKey}
                             onChange={(e) => setGeminiKey(e.target.value)}
                             placeholder={secrets.gemini_api_key_set ? '•••••• (preencha para substituir)' : 'AIzaSy...'}
@@ -408,11 +447,12 @@ export default function SettingsPage() {
                       
                       {aiProvider === 'openai' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenAI API Key
+                           <label htmlFor="openai-api-key" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenAI API Key
                             {secrets.openai_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                            type="password"
+                             id="openai-api-key"
+                             type="password"
                             value={openaiKey}
                             onChange={(e) => setOpenaiKey(e.target.value)}
                             placeholder={secrets.openai_api_key_set ? '•••••• (preencha para substituir)' : 'sk-...'}
@@ -423,11 +463,12 @@ export default function SettingsPage() {
                       
                       {aiProvider === 'anthropic' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Anthropic API Key
+                           <label htmlFor="anthropic-api-key" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Anthropic API Key
                             {secrets.anthropic_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                            type="password"
+                             id="anthropic-api-key"
+                             type="password"
                             value={anthropicKey}
                             onChange={(e) => setAnthropicKey(e.target.value)}
                             placeholder={secrets.anthropic_api_key_set ? '•••••• (preencha para substituir)' : 'sk-ant-...'}
@@ -438,11 +479,12 @@ export default function SettingsPage() {
 
                       {aiProvider === 'openrouter' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenRouter API Key
+                           <label htmlFor="openrouter-api-key" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">OpenRouter API Key
                             {secrets.openrouter_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                            type="password"
+                             id="openrouter-api-key"
+                             type="password"
                             value={openrouterKey}
                             onChange={(e) => setOpenrouterKey(e.target.value)}
                             placeholder={secrets.openrouter_api_key_set ? '•••••• (preencha para substituir)' : 'sk-or-v1-...'}
@@ -453,9 +495,10 @@ export default function SettingsPage() {
 
                       {aiProvider === 'ollama' && (
                         <div>
-                          <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">URL Base do Ollama</label>
+                           <label htmlFor="ollama-url" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">URL Base do Ollama</label>
                           <input 
-                            type="text"
+                             id="ollama-url"
+                             type="text"
                             value={ollamaUrl}
                             onChange={(e) => setOllamaUrl(e.target.value)}
                             placeholder="http://localhost:11434"

@@ -24,8 +24,8 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json(simulationResult);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Simulation error:", error);
-    return NextResponse.json({ error: error.message || "Erro na simulação do multi-agente." }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Erro na simulação do multi-agente." }, { status: 500 });
   }
 }

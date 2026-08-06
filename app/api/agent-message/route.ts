@@ -1,55 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 import { sendMessage } from '@/lib/messaging';
+import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { recordAuditAction } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => null);
+  const caseId = body?.caseId;
+  const message = typeof body?.message === 'string' ? body.message.trim() : '';
+
+  if (typeof caseId !== 'string' || !message) {
+    return NextResponse.json({ error: 'Caso e mensagem são obrigatórios.' }, { status: 400 });
+  }
+  if (message.length > 4000) {
+    return NextResponse.json({ error: 'Mensagem excede o limite de 4000 caracteres.' }, { status: 400 });
+  }
+
+  const tenant = await requireTenantContext(req, body?.tenant_id);
+  if ('response' in tenant) return tenant.response;
+
   try {
-    const { caseId, message } = await req.json();
-
-    if (!message || !message.trim()) {
-      return NextResponse.json({ error: "Mensagem vazia." }, { status: 400 });
-    }
-
-    if (!supabase) {
-      return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
-    }
-
-    // 1. Fetch case
-    const { data: caseData, error: caseError } = await supabase
+    const { ctx } = tenant;
+    const { data: caseData, error: caseError } = await ctx.supabase
       .from('cases')
       .select('*')
       .eq('id', caseId)
-      .single();
+      .eq('tenant_id', ctx.tenantId)
+      .maybeSingle();
+    if (caseError) return serverError('agent message case lookup error', caseError);
+    if (!caseData) return NextResponse.json({ error: 'Caso não encontrado.' }, { status: 404 });
 
-    if (caseError || !caseData) {
-      return NextResponse.json({ error: "Caso não encontrado." }, { status: 404 });
-    }
-
-    // 2. Save human agent message in Supabase
-    const { error: insertError } = await supabase.from('messages').insert({
+    const { error: insertError } = await ctx.supabase.from('messages').insert({
+      tenant_id: ctx.tenantId,
       case_id: caseId,
       role: 'human',
-      content: message.trim()
+      content: message,
+    });
+    if (insertError) return serverError('agent message insert error', insertError);
+
+    await recordAuditAction(ctx.supabase, {
+      tenantId: ctx.tenantId,
+      entityType: 'message',
+      entityId: caseId,
+      caseId,
+      actorUserId: ctx.userId,
+      action: 'HUMAN_MESSAGE_SENT',
+      metadata: { role: 'human', content_length: message.length },
     });
 
-    if (insertError) {
-      throw insertError;
-    }
-
-    // 3. Send message via configured provider
     if (caseData.phone || caseData.telegram_chat_id) {
       const destination = caseData.telegram_chat_id || caseData.phone;
-      await sendMessage(destination, message.trim(), caseData.user_id);
+      await sendMessage(destination, message, caseData.user_id);
     }
 
-    // 4. Set case status to needs_attention (human takeover) if it was in_negotiation or not_started
     if (caseData.status === 'in_negotiation' || caseData.status === 'not_started') {
-      await supabase.from('cases').update({ status: 'needs_attention' }).eq('id', caseId);
+      const { data: updatedCase, error: statusError } = await ctx.supabase
+        .from('cases')
+        .update({ status: 'needs_attention' })
+        .eq('id', caseId)
+        .eq('tenant_id', ctx.tenantId)
+        .select('*')
+        .single();
+      if (statusError) return serverError('agent message status error', statusError);
+      await recordAuditAction(ctx.supabase, {
+        tenantId: ctx.tenantId,
+        entityType: 'case',
+        entityId: caseId,
+        caseId,
+        actorUserId: ctx.userId,
+        action: 'STATUS_CHANGE',
+        before: caseData,
+        after: updatedCase,
+        metadata: { source: 'human_message' },
+      });
     }
 
     return NextResponse.json({ ok: true });
-  } catch (error: any) {
-    console.error('Agent Message Error:', error);
-    return NextResponse.json({ error: error.message || 'Erro ao enviar mensagem' }, { status: 500 });
+  } catch (error) {
+    return serverError('agent message exception', error);
   }
 }

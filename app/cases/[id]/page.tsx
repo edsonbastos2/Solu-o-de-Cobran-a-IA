@@ -6,7 +6,8 @@ import useSWR from 'swr';
 import { supabase } from '@/lib/supabase';
 import { Header } from '@/components/header';
 
-import { fetcher } from "@/lib/api";
+import { fetcher, fetchWithAuth } from '@/lib/api';
+import { useActiveTenant } from '@/hooks/use-active-tenant';
 import { 
   ArrowLeft, 
   Bot, 
@@ -28,21 +29,130 @@ import {
   Sparkles,
   Layers
 } from 'lucide-react';
-import { Case, Message } from '@/lib/types';
+import { AuditLog, Case, CaseDetailsResponse, Client, ContractWithClient, FinancialTitle, Message } from '@/lib/types';
 import { formatPhoneInput } from '@/lib/utils';
 import { generateCaseDossier, CollectionStageInfo } from '@/lib/finance';
+
+function ObligationContextCard({
+  caseData,
+  client,
+  contract,
+  financialTitle,
+}: {
+  caseData: Case;
+  client: Client | null;
+  contract: ContractWithClient | null;
+  financialTitle: FinancialTitle | null;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+        <Layers className="w-4 h-4 text-emerald-600" />
+        Contexto da Obrigação
+      </h3>
+      <dl className="grid grid-cols-1 gap-3 text-sm">
+        <div>
+          <dt className="text-xs text-slate-400">Cliente</dt>
+          <dd className="font-semibold text-slate-900">{client?.name || caseData.name}</dd>
+          {(client?.document || caseData.debtor_document) && <dd className="text-xs text-slate-500">{client?.document || caseData.debtor_document}</dd>}
+        </div>
+        <div>
+          <dt className="text-xs text-slate-400">Contrato</dt>
+          <dd className="font-semibold text-slate-900">{contract?.contract_number ? `#${contract.contract_number}` : 'Não vinculado'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-400">Título financeiro</dt>
+          <dd className="font-semibold text-slate-900">{financialTitle ? `Parcela ${financialTitle.installment_number}` : 'Não vinculado'}</dd>
+          {financialTitle?.external_reference && <dd className="text-xs text-slate-500">Ref. {financialTitle.external_reference}</dd>}
+        </div>
+        <div className="flex justify-between border-t border-slate-100 pt-3">
+          <span className="text-slate-500">Responsável</span>
+          <span className="font-semibold text-slate-900">{caseData.assigned_user_id || 'Não atribuído'}</span>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function FinancialSummaryCard({ caseData, stage, formattedOriginal, formattedUpdated }: {
+  caseData: Case;
+  stage: CollectionStageInfo | null;
+  formattedOriginal: string;
+  formattedUpdated: string;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+        <FileText className="w-4 h-4 text-emerald-600" />
+        Resumo Financeiro
+      </h3>
+      <div className="space-y-3 pt-1">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
+          <span className="text-slate-500">Valor Original:</span>
+          <span className="font-semibold text-slate-900">{formattedOriginal}</span>
+        </div>
+        <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
+          <span className="text-slate-500">Data de Vencimento:</span>
+          <span className="font-semibold text-slate-900">{new Date(caseData.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</span>
+        </div>
+        <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
+          <span className="text-slate-500">Valor Atualizado com Juros:</span>
+          <span className="font-bold text-emerald-600 text-base">{formattedUpdated}</span>
+        </div>
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-slate-500">Margem Max. Desconto:</span>
+          <span className="font-semibold text-amber-600">{caseData.max_discount_margin}%</span>
+        </div>
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-slate-500">Dias em atraso:</span>
+          <span className="font-semibold text-slate-900">{stage?.diasAtraso ?? 0}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuditActivityCard({ auditLogs }: { auditLogs: AuditLog[] }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+        <ShieldAlert className="w-4 h-4 text-emerald-600" />
+        Atividade de Auditoria
+      </h3>
+      {auditLogs.length === 0 ? (
+        <p className="text-xs text-slate-500">Nenhuma ação auditada disponível.</p>
+      ) : (
+        <ul className="space-y-3">
+          {auditLogs.slice(0, 8).map((log) => (
+            <li key={log.id} className="border-l-2 border-emerald-200 pl-3">
+              <p className="text-xs font-semibold text-slate-800">{log.action}</p>
+              <p className="text-[11px] text-slate-500">{log.details || 'Ação registrada'} · {new Date(log.created_at).toLocaleString('pt-BR')}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default function CaseDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params);
   const caseId = unwrappedParams.id;
+  const { user, authLoading, tenantId, tenantPath, needsTenantSelection } = useActiveTenant();
+  const canFetch = !authLoading && Boolean(user) && !needsTenantSelection;
 
-  const { data, isLoading: loading, mutate } = useSWR(caseId ? `/api/cases/${caseId}` : null, fetcher, {
+  const caseUrl = caseId ? `/api/cases/${caseId}${tenantPath}` : null;
+  const { data, error, isLoading: loading, mutate } = useSWR<CaseDetailsResponse>(canFetch ? caseUrl : null, fetcher, {
     refreshInterval: 4000
   });
 
   const caseData: Case | null = data?.case || null;
   const messages: Message[] = useMemo(() => data?.messages || [], [data?.messages]);
   const stage: CollectionStageInfo | null = data?.stage || null;
+  const client: Client | null = data?.client || null;
+  const contract: ContractWithClient | null = data?.contract || null;
+  const financialTitle: FinancialTitle | null = data?.financial_title || null;
+  const auditLogs: AuditLog[] = data?.audit_logs || [];
 
   // Human intervention input
   const [humanMessage, setHumanMessage] = useState('');
@@ -54,10 +164,11 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
 
   // Real-time Supabase channels for live chat and status updates
   useEffect(() => {
-    if (!supabase || !caseId) return;
+    const client = supabase;
+    if (!client || !caseId || !canFetch) return;
 
     // Listen to message inserts for this case
-    const messagesChannel = supabase
+    const messagesChannel = client
       .channel(`realtime-messages-${caseId}`)
       .on(
         'postgres_changes',
@@ -74,7 +185,7 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
       .subscribe();
 
     // Listen to case status/data changes
-    const caseChannel = supabase
+    const caseChannel = client
       .channel(`realtime-case-${caseId}`)
       .on(
         'postgres_changes',
@@ -91,15 +202,33 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
       .subscribe();
 
     return () => {
-      supabase.removeChannel(messagesChannel);
-      supabase.removeChannel(caseChannel);
+      client.removeChannel(messagesChannel);
+      client.removeChannel(caseChannel);
     };
-  }, [caseId, mutate]);
+  }, [caseId, canFetch, mutate]);
 
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  if (needsTenantSelection) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+        <Header />
+        <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-12">
+          <div className="bg-white rounded-2xl border border-amber-200 p-8 text-center shadow-sm">
+            <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+            <h1 className="text-xl font-bold text-slate-900">Selecione um tenant para continuar</h1>
+            <p className="text-sm text-slate-500 mt-2">Este caso só pode ser consultado por meio de um tenant ativo. Nenhuma operação foi executada.</p>
+            <Link href={`/cases${tenantPath}`} className="inline-flex mt-5 px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800">
+              Voltar para casos
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   const handleSendHumanMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,12 +239,13 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
     setHumanMessage('');
 
     try {
-      const res = await fetch('/api/agent-message', {
+      const res = await fetchWithAuth('/api/agent-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           caseId,
-          message: msgText
+          message: msgText,
+          tenant_id: tenantId || undefined
         })
       });
 
@@ -125,8 +255,8 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
       } else {
         mutate();
       }
-    } catch (err: any) {
-      alert('Erro na conexão: ' + err.message);
+    } catch (err: unknown) {
+      alert('Erro na conexão: ' + (err instanceof Error ? err.message : 'erro desconhecido'));
     } finally {
       setIsSending(false);
     }
@@ -135,10 +265,10 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
   const handleStartNegotiation = async () => {
     setIsStartingIA(true);
     try {
-      const res = await fetch('/api/start-negotiation', {
+      const res = await fetchWithAuth('/api/start-negotiation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caseId })
+        body: JSON.stringify({ caseId, tenant_id: tenantId || undefined })
       });
       const resData = await res.json();
       if (!res.ok) {
@@ -146,8 +276,8 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
       } else {
         mutate();
       }
-    } catch (err: any) {
-      alert('Erro: ' + err.message);
+    } catch (err: unknown) {
+      alert('Erro: ' + (err instanceof Error ? err.message : 'erro desconhecido'));
     } finally {
       setIsStartingIA(false);
     }
@@ -156,10 +286,10 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
   const handleUpdateStatus = async (newStatus: string) => {
     setIsUpdatingStatus(true);
     try {
-      const res = await fetch(`/api/cases/${caseId}`, {
+      const res = await fetchWithAuth(`/api/cases/${caseId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus, tenant_id: tenantId || undefined })
       });
       if (!res.ok) {
         const resData = await res.json();
@@ -167,8 +297,8 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
       } else {
         mutate();
       }
-    } catch (err: any) {
-      alert('Erro: ' + err.message);
+    } catch (err: unknown) {
+      alert('Erro: ' + (err instanceof Error ? err.message : 'erro desconhecido'));
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -239,6 +369,28 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+        <Header />
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-12">
+          <div className="bg-white p-8 rounded-2xl border border-red-200 shadow-sm text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+            <h2 className="text-xl font-bold text-slate-900">Não foi possível carregar o caso</h2>
+            <p className="text-slate-500 text-sm mt-1 mb-6">{error instanceof Error ? error.message : 'Tente novamente.'}</p>
+            <button
+              type="button"
+              onClick={() => mutate()}
+              className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (!caseData) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -249,7 +401,7 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
             <h2 className="text-xl font-bold text-slate-900">Caso não encontrado</h2>
             <p className="text-slate-500 text-sm mt-1 mb-6">Este caso pode ter sido removido ou você não tem acesso.</p>
             <Link
-              href="/cases"
+               href={`/cases${tenantPath}`}
               className="px-4 py-2 bg-slate-900 text-white rounded-xl text-sm font-semibold hover:bg-slate-800 transition-colors"
             >
               Voltar para a lista de casos
@@ -274,9 +426,10 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <Link
-              href="/cases"
+               href={`/cases${tenantPath}`}
               className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors shadow-sm"
               title="Voltar para Casos"
+              aria-label="Voltar para casos"
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
@@ -355,6 +508,16 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
 
+        {data?.legacy_context && (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <p className="text-sm font-semibold">Contexto legado incompleto</p>
+              <p className="mt-1 text-xs text-amber-800">Este caso histórico não possui um vínculo determinístico com título e contrato. A conversa e o histórico continuam disponíveis.</p>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Chat Panel */}
           <div className="lg:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[680px]">
@@ -374,7 +537,9 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
 
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-slate-400">Status do Caso:</span>
+                <label htmlFor="case-status" className="sr-only">Status do caso</label>
                 <select
+                  id="case-status"
                   value={caseData.status}
                   disabled={isUpdatingStatus}
                   onChange={(e) => handleUpdateStatus(e.target.value)}
@@ -473,7 +638,9 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
 
             {/* Human Intervention Input Bar */}
             <form onSubmit={handleSendHumanMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+              <label htmlFor="human-message" className="sr-only">Mensagem de intervenção humana</label>
               <input
+                id="human-message"
                 type="text"
                 placeholder="Enviar mensagem via WhatsApp (Intervenção Humana)..."
                 value={humanMessage}
@@ -497,37 +664,8 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
 
           {/* Sidebar Info & Controls */}
           <div className="space-y-6">
-            {/* Financial Details */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                <FileText className="w-4 h-4 text-emerald-600" />
-                Resumo Financeiro
-              </h3>
-
-              <div className="space-y-3 pt-1">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
-                  <span className="text-slate-500">Valor Original:</span>
-                  <span className="font-semibold text-slate-900">{formattedOriginal}</span>
-                </div>
-
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
-                  <span className="text-slate-500">Data de Vencimento:</span>
-                  <span className="font-semibold text-slate-900">
-                    {new Date(caseData.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center pb-2 border-b border-slate-100 text-sm">
-                  <span className="text-slate-500">Valor Atualizado com Juros:</span>
-                  <span className="font-bold text-emerald-600 text-base">{formattedUpdated}</span>
-                </div>
-
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-slate-500">Margem Max. Desconto:</span>
-                  <span className="font-semibold text-amber-600">{caseData.max_discount_margin}%</span>
-                </div>
-              </div>
-            </div>
+            <ObligationContextCard caseData={caseData} client={client} contract={contract} financialTitle={financialTitle} />
+            <FinancialSummaryCard caseData={caseData} stage={stage} formattedOriginal={formattedOriginal} formattedUpdated={formattedUpdated} />
 
             {/* Debtor Info */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
@@ -602,6 +740,8 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
                 </ul>
               </div>
             )}
+
+            <AuditActivityCard auditLogs={auditLogs} />
           </div>
         </div>
       </main>

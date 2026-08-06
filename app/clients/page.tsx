@@ -2,28 +2,30 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { supabase } from '@/lib/supabase';
 import { Header } from '@/components/header';
 import { Users, Search, Pencil, Check, X } from 'lucide-react';
 import { formatPhoneInput } from '@/lib/utils';
 import { Pagination } from '@/components/pagination';
 import { useAuth } from '@/hooks/useAuth';
-
-import { fetcher } from "@/lib/api";
+import { useActiveTenant } from '@/hooks/use-active-tenant';
+import { Client } from '@/lib/types';
+import { fetcher, fetchWithAuth } from "@/lib/api";
 
 export default function ClientsPage() {
   const { user } = useAuth();
+  const { tenantQuery } = useActiveTenant();
   const [page, setPage] = useState(1);
   const limit = 10;
-  
-  const { data, isLoading: loading, mutate } = useSWR([`/api/clients?page=${page}&limit=${limit}`, user?.id || 'anon'], ([url]) => fetcher(url));
-  const clients = data?.clients || [];
+
+  const swrKey = `/api/clients?page=${page}&limit=${limit}${tenantQuery ? `&${tenantQuery}` : ''}`;
+  const { data, isLoading: loading, mutate } = useSWR([swrKey, user?.id || 'anon'], ([url]) => fetcher(url));
+  const clients: Client[] = data?.clients || [];
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState({ name: '', email: '', phone: '' });
   const [saving, setSaving] = useState(false);
 
-  const handleEditClick = (client: any) => {
+  const handleEditClick = (client: Client) => {
     setEditingId(client.id);
     setEditData({
       name: client.name || '',
@@ -36,33 +38,38 @@ export default function ClientsPage() {
     setEditingId(null);
   };
 
-  const handleSaveEdit = async (id: string) => {
+const handleSaveEdit = async (id: string) => {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('clients')
-        .update({
+      const res = await fetchWithAuth(`/api/clients/${id}${tenantQuery ? `?${tenantQuery}` : ''}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: editData.name,
           email: editData.email,
           phone: editData.phone
         })
-        .eq('id', id);
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        let errorMsg = err.error || 'Erro ao salvar cliente.';
+        if (typeof errorMsg === 'string') {
+          if (errorMsg.includes('clients_email_key')) {
+            errorMsg = 'Este email já está cadastrado no sistema.';
+          } else if (errorMsg.includes('clients_document_key')) {
+            errorMsg = 'Este documento já está cadastrado no sistema.';
+          }
+        }
+        alert('Erro ao salvar cliente: ' + errorMsg);
+        return;
+      }
 
       mutate(); // Refresh current page data
       setEditingId(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      let errorMsg = err.message;
-      if (err.code === '23505') {
-        if (err.message.includes('clients_email_key')) {
-          errorMsg = 'Este email já está cadastrado no sistema.';
-        } else if (err.message.includes('clients_document_key')) {
-          errorMsg = 'Este documento já está cadastrado no sistema.';
-        }
-      }
-      alert('Erro ao salvar cliente: ' + errorMsg);
+      alert('Erro ao salvar cliente: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
     } finally {
       setSaving(false);
     }
@@ -84,7 +91,9 @@ export default function ClientsPage() {
           <div className="p-4 border-b border-gray-100">
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input 
+              <label htmlFor="clients-search" className="sr-only">Buscar clientes</label>
+              <input
+                id="clients-search"
                 type="text" 
                 placeholder="Buscar por nome ou documento..." 
                 className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -96,11 +105,11 @@ export default function ClientsPage() {
             <table className="w-full text-left text-sm text-gray-600">
               <thead className="bg-gray-50/50 text-gray-500 font-medium">
                 <tr>
-                  <th className="px-6 py-4">Nome</th>
-                  <th className="px-6 py-4">Documento</th>
-                  <th className="px-6 py-4">Email</th>
-                  <th className="px-6 py-4">Telefone</th>
-                  <th className="px-6 py-4 text-right">Ações</th>
+                  <th scope="col" className="px-6 py-4">Nome</th>
+                  <th scope="col" className="px-6 py-4">Documento</th>
+                  <th scope="col" className="px-6 py-4">Email</th>
+                  <th scope="col" className="px-6 py-4">Telefone</th>
+                  <th scope="col" className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -119,7 +128,7 @@ export default function ClientsPage() {
                     </td>
                   </tr>
                 ) : (
-                  clients.map((client: any) => (
+                  clients.map((client: Client) => (
                     <tr key={client.id} className="hover:bg-gray-50/50 transition-colors">
                       {editingId === client.id ? (
                         <>
@@ -155,16 +164,18 @@ export default function ClientsPage() {
                               <button 
                                 onClick={() => handleSaveEdit(client.id)}
                                 disabled={saving}
-                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="Salvar"
+                                 className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                 title="Salvar"
+                                 aria-label="Salvar alterações do cliente"
                               >
                                 <Check className="w-4 h-4" />
                               </button>
                               <button 
                                 onClick={handleCancelEdit}
                                 disabled={saving}
-                                className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Cancelar"
+                                 className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                 title="Cancelar"
+                                 aria-label="Cancelar edição do cliente"
                               >
                                 <X className="w-4 h-4" />
                               </button>
@@ -180,8 +191,9 @@ export default function ClientsPage() {
                           <td className="px-6 py-4 text-right">
                             <button 
                               onClick={() => handleEditClick(client)}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Editar Cliente"
+                               className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                               title="Editar Cliente"
+                               aria-label={`Editar cliente ${client.name || client.id}`}
                             >
                               <Pencil className="w-4 h-4" />
                             </button>

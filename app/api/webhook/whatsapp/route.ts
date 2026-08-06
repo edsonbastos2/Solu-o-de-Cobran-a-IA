@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { processChat } from '@/lib/agent';
 import { rateLimit } from '@/lib/rate-limit';
+import { resolveWebhookTenant } from '@/lib/webhook-tenant';
+import { recordAuditAction } from '@/lib/audit';
 
 // Normaliza telefone para dígitos sem o código 55 do Brasil.
 function normalizePhone(phone?: string): string | null {
@@ -57,6 +59,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    const tenantId = await resolveWebhookTenant(supabaseAdmin, { instanceId: body.instanceId });
+    if (!tenantId) {
+      console.warn('[webhook/whatsapp] tenant não resolvido', { instanceId: body.instanceId || null });
+      return NextResponse.json({ ok: true, ignored: 'tenant_unresolved' });
+    }
+
     // 4. Idempotência: descarta eventos duplicados do Z-API
     const eventId = body.messageId || body.id || body.instanceId + '|' + body.chatId || null;
     if (eventId) {
@@ -68,7 +76,9 @@ export async function POST(req: NextRequest) {
       if (existing) {
         return NextResponse.json({ ok: true, duplicated: true });
       }
-      await supabaseAdmin.from('webhook_events').insert({ id: eventId, payload: body });
+      const { error: eventError } = await supabaseAdmin.from('webhook_events').insert({ id: eventId, payload: body });
+      if (eventError?.code === '23505') return NextResponse.json({ ok: true, duplicated: true });
+      if (eventError) throw eventError;
     }
 
     // 5. Match de caso por telefone (match exato após normalização)
@@ -81,6 +91,7 @@ export async function POST(req: NextRequest) {
     const { data: cases, error: casesError } = await supabaseAdmin
       .from('cases')
       .select('*')
+      .eq('tenant_id', tenantId)
       .or(`status.eq.not_started,status.eq.in_negotiation,status.eq.needs_attention`)
       .or(`phone.eq.${normalized},phone.eq.55${normalized}`)
       .order('created_at', { ascending: false })
@@ -95,9 +106,19 @@ export async function POST(req: NextRequest) {
     // Se o caso está em intervenção humana, apenas registra a mensagem
     if (currentCase.status === 'needs_attention') {
       await supabaseAdmin.from('messages').insert({
+        tenant_id: tenantId,
         case_id: currentCase.id,
         role: 'user',
         content: messageText
+      });
+      await recordAuditAction(supabaseAdmin, {
+        tenantId,
+        entityType: 'message',
+        entityId: currentCase.id,
+        caseId: currentCase.id,
+        actorUserId: currentCase.user_id || null,
+        action: 'EXTERNAL_MESSAGE_RECEIVED',
+        metadata: { channel: 'whatsapp', content_length: messageText.length },
       });
       return NextResponse.json({ ok: true });
     }
@@ -108,7 +129,7 @@ export async function POST(req: NextRequest) {
       console.warn('Rate limit webhook excedido para', normalized);
       return NextResponse.json({ ok: true, rateLimited: true });
     }
-    const result = await processChat(currentCase.id, messageText);
+    const result = await processChat(currentCase.id, messageText, supabaseAdmin, tenantId);
 
     return NextResponse.json({ ok: true, newStatus: result.newStatus });
   } catch (error) {

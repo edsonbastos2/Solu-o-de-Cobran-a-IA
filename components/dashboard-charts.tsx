@@ -2,6 +2,7 @@
 
 import useSWR from 'swr';
 import { useAuth } from '@/hooks/useAuth';
+import { useActiveTenant } from '@/hooks/use-active-tenant';
 import { 
   BarChart, 
   Bar, 
@@ -22,7 +23,8 @@ const COLORS = ['#10b981', '#f43f5e', '#3b82f6', '#f59e0b'];
 
 export function DashboardCharts() {
   const { user } = useAuth();
-  const { data, error, isLoading } = useSWR(['/api/dashboard/metrics', user?.id || 'anon'], ([url]) => fetcher(url));
+  const { tenantQuery } = useActiveTenant();
+  const { data, error, isLoading } = useSWR([`/api/dashboard/metrics${tenantQuery ? `?${tenantQuery}` : ''}`, user?.id || 'anon'], ([url]) => fetcher(url));
 
   if (isLoading) {
     return (

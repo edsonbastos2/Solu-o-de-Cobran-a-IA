@@ -1,6 +1,27 @@
+export interface Tenant {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  name: string;
+  slug: string;
+  owner_user_id: string;
+  status: 'active' | 'suspended' | 'cancelled' | string;
+  settings?: Record<string, unknown>;
+}
+
+export interface TenantMember {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  role: 'owner' | 'admin' | 'member' | string;
+  status: 'active' | 'invited' | 'suspended' | string;
+  created_at: string;
+}
+
 export interface Client {
   id: string;
   created_at: string;
+  tenant_id?: string;
   user_id?: string;
   name: string;
   document: string;
@@ -12,6 +33,7 @@ export interface Client {
 export interface CollectionPolicy {
   id: string;
   created_at: string;
+  tenant_id?: string;
   user_id?: string;
   name: string;
   interest_rate?: number;
@@ -27,6 +49,7 @@ export interface CollectionPolicy {
 export interface Contract {
   id: string;
   created_at: string;
+  tenant_id?: string;
   user_id?: string;
   client_id: string;
   contract_number?: string;
@@ -49,9 +72,16 @@ export interface Contract {
   collection_policies?: CollectionPolicy;
 }
 
+export type FinancialTitleEligibilityReason = 'future' | 'today' | 'overdue' | 'paid' | 'cancelled';
+
+export interface ContractWithClient extends Contract {
+  clients?: Client | null;
+}
+
 export interface Installment {
   id: string;
   created_at: string;
+  tenant_id?: string;
   contract_id: string;
   installment_number: number;
   original_value: number;
@@ -62,6 +92,7 @@ export interface Installment {
 export interface Case {
   id: string;
   created_at: string;
+  tenant_id?: string;
   user_id?: string;
   name: string;
   phone: string;
@@ -70,6 +101,12 @@ export interface Case {
   due_date: string;
   max_discount_margin: number;
   status: 'not_started' | 'in_negotiation' | 'needs_attention' | 'closed';
+  financial_title_id?: string | null;
+  financial_title?: FinancialTitle | null;
+  contract?: Contract | null;
+  client?: Client | null;
+  assigned_user_id?: string | null;
+  legacy_context?: boolean;
   debtor_id?: string;
   debtor_email?: string;
   debtor_document?: string;
@@ -80,9 +117,210 @@ export interface Case {
 export interface Message {
   id: string;
   created_at: string;
+  tenant_id?: string;
   case_id: string;
   role: 'user' | 'ai' | 'human' | 'system';
   content: string;
+}
+
+export interface AuditLog {
+  id: string;
+  case_id?: string | null;
+  tenant_id?: string | null;
+  user_id?: string | null;
+  actor_user_id?: string | null;
+  action: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  old_status?: string | null;
+  new_status?: string | null;
+  details?: string | null;
+  metadata?: Record<string, unknown> | null;
+  before_state?: Record<string, unknown> | null;
+  after_state?: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ContractClause {
+  id: string;
+  tenant_id: string;
+  contract_id: string;
+  clause_number?: number;
+  title?: string;
+  content: string;
+  active: boolean;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContractDocument {
+  id: string;
+  tenant_id: string;
+  contract_id: string;
+  document_type: string;
+  file_name?: string;
+  storage_path?: string;
+  mime_type?: string;
+  file_size?: number;
+  extracted_text?: string;
+  metadata?: Record<string, unknown>;
+  uploaded_by?: string;
+  created_at: string;
+}
+
+export interface FinancialTitle {
+  id: string;
+  tenant_id: string;
+  contract_id: string;
+  client_id?: string;
+  installment_number: number;
+  external_reference?: string;
+  description?: string;
+  original_value: number;
+  current_value: number | null;
+  due_date: string;
+  status: string;
+  paid_at?: string;
+  legacy_installment_id?: string;
+  metadata?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FinancialTitleWithEligibility extends FinancialTitle {
+  eligible: boolean;
+  eligibility_reason: FinancialTitleEligibilityReason;
+  days_overdue: number;
+}
+
+export interface FinancialTitleWithRelations extends FinancialTitle {
+  contracts?: ContractWithClient | null;
+}
+
+export interface FinancialTitlesResponse {
+  financial_titles: FinancialTitleWithEligibility[];
+}
+
+export interface CaseWithRelations extends Case {
+  financial_titles?: FinancialTitleWithRelations | FinancialTitleWithRelations[] | null;
+}
+
+export interface CasesListResponse {
+  cases: Case[];
+  totalPages: number;
+  total: number;
+  page: number;
+}
+
+export interface CaseDetailsResponse {
+  case: Case;
+  client: Client | null;
+  contract: ContractWithClient | null;
+  financial_title: FinancialTitle | null;
+  messages: Message[];
+  audit_logs: AuditLog[];
+  legacy_context: boolean;
+  stage: import('@/lib/finance').CollectionStageInfo;
+}
+
+export type CaseCreationErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'TENANT_REQUIRED'
+  | 'TITLE_NOT_FOUND'
+  | 'TITLE_NOT_OVERDUE'
+  | 'TITLE_NOT_COLLECTIBLE'
+  | 'ACTIVE_CASE_EXISTS';
+
+export interface CreateCaseInput {
+  financial_title_id: string;
+  tenant_id?: string;
+}
+
+export interface CreateCaseResult {
+  case: Case | null;
+  error_code: CaseCreationErrorCode | null;
+}
+
+export interface CollectionCaseContext {
+  case: Case;
+  client: Client | null;
+  contract: Contract | null;
+  financial_title: FinancialTitle | null;
+  legacy_context: boolean;
+  messages: Message[];
+  audit_logs: AuditLog[];
+}
+
+export interface Workflow {
+  id: string;
+  tenant_id: string;
+  name: string;
+  description?: string;
+  trigger_type: string;
+  active: boolean;
+  version: number;
+  definition: Record<string, unknown>;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Campaign {
+  id: string;
+  tenant_id: string;
+  workflow_id?: string;
+  name: string;
+  channel: string;
+  status: string;
+  starts_at?: string;
+  ends_at?: string;
+  audience_filter: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Negotiation {
+  id: string;
+  tenant_id: string;
+  client_id?: string;
+  contract_id?: string;
+  financial_title_id?: string;
+  case_id?: string;
+  status: string;
+  original_value?: number;
+  proposed_value?: number;
+  agreed_value?: number;
+  discount_percent?: number;
+  installment_count?: number;
+  expires_at?: string;
+  accepted_at?: string;
+  metadata: Record<string, unknown>;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LegalProcess {
+  id: string;
+  tenant_id: string;
+  client_id?: string;
+  contract_id?: string;
+  financial_title_id?: string;
+  case_id?: string;
+  process_number?: string;
+  process_type: string;
+  court?: string;
+  status: string;
+  filing_date?: string;
+  lawyer_name?: string;
+  lawyer_contact?: string;
+  metadata: Record<string, unknown>;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // Result expected from AI Extraction

@@ -2,22 +2,20 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { supabase } from '@/lib/supabase';
 import { Header } from '@/components/header';
 import { CollectionPolicy } from '@/lib/types';
 import { Plus, Pencil, Check, X, ShieldAlert } from 'lucide-react';
 import { Pagination } from '@/components/pagination';
-import { useAuth } from '@/hooks/useAuth';
-
-import { fetcher } from "@/lib/api";
+import { useActiveTenant } from '@/hooks/use-active-tenant';
+import { fetcher, fetchWithAuth } from "@/lib/api";
 
 export default function PoliciesPage() {
-  const { user } = useAuth();
+  const { tenantQuery } = useActiveTenant();
   const [page, setPage] = useState(1);
   const limit = 10;
-  
-  const { data, isLoading: loading, mutate } = useSWR(`/api/policies?page=${page}&limit=${limit}`, fetcher);
-  const policies = data?.policies || [];
+
+  const { data, isLoading: loading, mutate } = useSWR(`/api/policies?page=${page}&limit=${limit}${tenantQuery ? `&${tenantQuery}` : ''}`, fetcher);
+  const policies: CollectionPolicy[] = data?.policies || [];
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -55,7 +53,7 @@ export default function PoliciesPage() {
     setIsCreating(false);
   };
 
-  const handleSaveClick = async () => {
+const handleSaveClick = async () => {
     if (!editData.name) {
       alert('O nome da política é obrigatório.');
       return;
@@ -63,25 +61,34 @@ export default function PoliciesPage() {
 
     setSaving(true);
     try {
+      const queryString = tenantQuery ? `?${tenantQuery}` : '';
+      let res: Response;
       if (isCreating) {
-        const { error } = await supabase
-          .from('collection_policies')
-          .insert([editData]);
-        if (error) throw error;
+        res = await fetchWithAuth(`/api/policies${queryString}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editData)
+        });
       } else if (editingId) {
-        const { error } = await supabase
-          .from('collection_policies')
-          .update(editData)
-          .eq('id', editingId);
-        if (error) throw error;
+        res = await fetchWithAuth(`/api/policies/${editingId}${queryString}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(editData)
+        });
+      } else {
+        return;
       }
-      
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao salvar política.');
+      }
+
       await fetchPolicies();
       setEditingId(null);
       setIsCreating(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert('Erro ao salvar política: ' + err.message);
+      alert('Erro ao salvar política: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
     } finally {
       setSaving(false);
     }
@@ -115,12 +122,12 @@ export default function PoliciesPage() {
             <table className="w-full text-left text-sm text-gray-600">
               <thead className="bg-gray-50 text-gray-700 font-semibold border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-4">Nome da Política</th>
-                  <th className="px-6 py-4">Juros / Multa</th>
-                  <th className="px-6 py-4">Negativação</th>
-                  <th className="px-6 py-4">Protesto</th>
-                  <th className="px-6 py-4 text-center">Status</th>
-                  <th className="px-6 py-4 text-right">Ações</th>
+                  <th scope="col" className="px-6 py-4">Nome da Política</th>
+                  <th scope="col" className="px-6 py-4">Juros / Multa</th>
+                  <th scope="col" className="px-6 py-4">Negativação</th>
+                  <th scope="col" className="px-6 py-4">Protesto</th>
+                  <th scope="col" className="px-6 py-4 text-center">Status</th>
+                  <th scope="col" className="px-6 py-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -176,10 +183,10 @@ export default function PoliciesPage() {
                       </label>
                     </td>
                     <td className="px-6 py-4 text-right whitespace-nowrap">
-                      <button onClick={handleSaveClick} disabled={saving} className="p-1 text-green-600 hover:bg-green-50 rounded mr-2" title="Salvar">
+                       <button onClick={handleSaveClick} disabled={saving} className="p-1 text-green-600 hover:bg-green-50 rounded mr-2" title="Salvar" aria-label="Salvar política">
                         <Check className="w-4 h-4" />
                       </button>
-                      <button onClick={handleCancelClick} disabled={saving} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Cancelar">
+                       <button onClick={handleCancelClick} disabled={saving} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Cancelar" aria-label="Cancelar edição da política">
                         <X className="w-4 h-4" />
                       </button>
                     </td>
@@ -248,10 +255,10 @@ export default function PoliciesPage() {
                             </label>
                           </td>
                           <td className="px-6 py-4 text-right whitespace-nowrap">
-                            <button onClick={handleSaveClick} disabled={saving} className="p-1 text-green-600 hover:bg-green-50 rounded mr-2" title="Salvar">
+                             <button onClick={handleSaveClick} disabled={saving} className="p-1 text-green-600 hover:bg-green-50 rounded mr-2" title="Salvar" aria-label="Salvar política">
                               <Check className="w-4 h-4" />
                             </button>
-                            <button onClick={handleCancelClick} disabled={saving} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Cancelar">
+                             <button onClick={handleCancelClick} disabled={saving} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Cancelar" aria-label="Cancelar edição da política">
                               <X className="w-4 h-4" />
                             </button>
                           </td>
@@ -289,6 +296,7 @@ export default function PoliciesPage() {
                               onClick={() => handleEditClick(policy)}
                               className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                               title="Editar"
+                              aria-label={`Editar política ${policy.name}`}
                             >
                               <Pencil className="w-4 h-4" />
                             </button>

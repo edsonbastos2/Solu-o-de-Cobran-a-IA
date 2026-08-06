@@ -45,7 +45,7 @@ Both server and admin return `null` when env vars are missing (graceful degradat
 
 - **Middleware** (`middleware.ts`): Enforces Supabase session on all routes except `/login`, `/api/webhook/*`, `/api/cron/*`, `/api/extract-contract/*`. Returns 401 JSON for API routes, redirects to `/login` for pages.
 - **Client guard**: `AuthGuard` in root layout wraps all pages, redirects to `/login` when loading finishes without a user.
-- **API auth helpers** (`lib/api-auth.ts`): `requireUser()` returns userId + superAdmin flag; `requireSuperAdmin()` returns 403 for non-admins. Use these in every API route handler.
+- **API auth helpers** (`lib/api-auth.ts`): `requireUser()` returns userId + superAdmin flag + currentTenantId; `requireSuperAdmin()` returns 403 for non-admins; `requireTenantContext(req, requestedTenantId?)` resolves the tenant — super-admin uses the explicit `?tenant_id=` override or falls back to the persisted `profiles.current_tenant_id` (set via `PUT /api/tenants/current`, listed via `GET /api/tenants`); regular users use their active `tenant_members` row. Use these in every API route handler.
 - **Super admin**: Flag stored in `profiles.is_super_admin`. When true, the server-side `getSupabaseServerWithAdminFallback` returns the admin (service role) client, bypassing RLS.
 - **Multi-tenant isolation**: Regular tenants can only access rows where `user_id` matches. Never forget the `user_id` filter when querying on behalf of a non-admin user.
 

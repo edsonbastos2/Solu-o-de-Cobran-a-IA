@@ -13,25 +13,39 @@
 --     nome: ai_keys_encryption_key
 --     valor: <chave aleatória de 32 bytes (base64)>
 --   E conceda acesso à função service_role.
+-- Exemplo no SQL Editor (execute uma única vez e não regenere depois):
+--   SELECT vault.create_secret(encode(gen_random_bytes(32), 'base64'), 'ai_keys_encryption_key');
 -- Caso use Supabase self-hosted, crie a chave em vault.secrets.
 -- ==============================================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS supabase_vault; -- presente no Supabase gerenciado
+CREATE EXTENSION IF NOT EXISTS supabase_vault WITH SCHEMA vault; -- presente no Supabase gerenciado
 
 -- --------------------------------------------------------------------
--- Helper: obter chave de criptografia do Vault (fallback p/ env-info)
+-- Helper: obter chave de criptografia do Vault
 -- --------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_ai_encryption_key()
-RETURNS BYTEA
-LANGUAGE sql
+RETURNS TEXT
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT COALESCE(
-    (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'ai_keys_encryption_key' LIMIT 1),
-    digest(COALESCE(current_setting('app.ai_keys_enc_key', true), 'fallback-insecure-key'), 'sha256')
-  )
+DECLARE
+  vault_key TEXT;
+BEGIN
+  SELECT decrypted_secret::TEXT
+    INTO vault_key
+    FROM vault.decrypted_secrets
+   WHERE name = 'ai_keys_encryption_key'
+   LIMIT 1;
+
+  IF vault_key IS NULL OR btrim(vault_key) = '' THEN
+    RAISE EXCEPTION 'Vault secret ai_keys_encryption_key is not configured';
+  END IF;
+
+  -- Mantem compatibilidade com os dados ja criptografados.
+  RETURN vault_key;
+END;
 $$;
 
 -- --------------------------------------------------------------------
@@ -41,7 +55,7 @@ CREATE OR REPLACE FUNCTION public.ai_encrypt(plain TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 BEGIN
   IF plain IS NULL OR plain = '' THEN
@@ -49,7 +63,7 @@ BEGIN
   END IF;
   -- retorna em base64 o envelope pgcrypto (iv + ciphertext + tag)
   RETURN encode(
-    pgp_sym_encrypt(plain, convert_from(public.get_ai_encryption_key(), 'latin1')),
+    pgp_sym_encrypt(plain, public.get_ai_encryption_key()),
     'base64'
   );
 END;
@@ -59,7 +73,7 @@ CREATE OR REPLACE FUNCTION public.ai_decrypt(cipher TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, extensions
 AS $$
 DECLARE
   raw BYTEA;
@@ -68,9 +82,27 @@ BEGIN
     RETURN cipher;
   END IF;
   raw := decode(cipher, 'base64');
-  RETURN pgp_sym_decrypt(raw, convert_from(public.get_ai_encryption_key(), 'latin1'));
+  RETURN pgp_sym_decrypt(raw, public.get_ai_encryption_key());
 END;
 $$;
+
+-- --------------------------------------------------------------------
+-- Compatibilidade: garante as colunas usadas pela criptografia/RPC
+-- --------------------------------------------------------------------
+-- Necessario para projetos que criaram profiles antes destas colunas.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ai_provider TEXT DEFAULT 'opencode';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ai_model TEXT DEFAULT 'deepseek-v4-flash';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS opencode_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS gemini_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS openai_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS anthropic_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS openrouter_api_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS ollama_base_url TEXT DEFAULT 'http://localhost:11434';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS zapi_instance TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS zapi_key TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS zapi_client_token TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS messaging_provider TEXT DEFAULT 'whatsapp';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS telegram_bot_token TEXT;
 
 -- --------------------------------------------------------------------
 -- Migração dos dados existentes: criptografa o valor atual (idempotente)
@@ -106,6 +138,8 @@ REVOKE UPDATE (opencode_api_key, gemini_api_key, openai_api_key, anthropic_api_k
 -- RPC para o servidor (service role) ler as chaves descriptografadas.
 -- Retorna NULL para colunas vazias; nunca expõe para anon/authenticated.
 -- --------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.get_user_ai_keys(UUID);
+
 CREATE OR REPLACE FUNCTION public.get_user_ai_keys(p_user_id UUID)
 RETURNS TABLE (
   ai_provider TEXT,
@@ -152,5 +186,13 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.get_user_ai_keys(UUID) FROM anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.get_user_ai_keys(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_user_ai_keys(UUID) TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.get_ai_encryption_key() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_ai_encryption_key() TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.ai_encrypt(TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.ai_decrypt(TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ai_encrypt(TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.ai_decrypt(TEXT) TO service_role;

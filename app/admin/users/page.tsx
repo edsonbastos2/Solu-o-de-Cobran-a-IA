@@ -79,8 +79,8 @@ export default function AdminUsersPage() {
       setShowAddModal(false);
       setFormData({ name: '', email: '', password: '', phone: '', is_super_admin: false });
       mutate();
-    } catch (err: any) {
-      setFormError(err.message);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao criar usuário');
     } finally {
       setFormLoading(false);
     }
@@ -108,8 +108,8 @@ export default function AdminUsersPage() {
       setShowEditModal(null);
       setFormData({ name: '', email: '', password: '', phone: '', is_super_admin: false });
       mutate();
-    } catch (err: any) {
-      setFormError(err.message);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao atualizar usuário');
     } finally {
       setFormLoading(false);
     }
@@ -128,8 +128,8 @@ export default function AdminUsersPage() {
       
       setShowDeleteModal(null);
       mutate();
-    } catch (err: any) {
-      setFormError(err.message);
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Erro ao deletar usuário');
     } finally {
       setFormLoading(false);
     }
@@ -145,8 +145,8 @@ export default function AdminUsersPage() {
       });
       if (!res.ok) throw new Error('Erro ao atualizar usuário');
       mutate();
-    } catch (err: any) {
-      alert(err.message || 'Erro ao atualizar usuário');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erro ao atualizar usuário');
     } finally {
       setIsUpdating(null);
     }
@@ -224,10 +224,10 @@ export default function AdminUsersPage() {
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-white/5 text-slate-400">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Usuário</th>
-                  <th className="px-6 py-4 font-medium">Contato</th>
-                  <th className="px-6 py-4 font-medium">Data de Cadastro</th>
-                  <th className="px-6 py-4 font-medium text-right">Ações</th>
+                  <th scope="col" className="px-6 py-4 font-medium">Usuário</th>
+                  <th scope="col" className="px-6 py-4 font-medium">Contato</th>
+                  <th scope="col" className="px-6 py-4 font-medium">Data de Cadastro</th>
+                  <th scope="col" className="px-6 py-4 font-medium text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -296,15 +296,17 @@ export default function AdminUsersPage() {
                           
                           <button
                             onClick={() => openEditModal(profile)}
-                            className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-md transition-colors"
-                            title="Editar Usuário"
+                             className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-md transition-colors"
+                             title="Editar Usuário"
+                             aria-label={`Editar usuário ${profile.name || profile.email || profile.id}`}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setShowDeleteModal(profile)}
-                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
-                            title="Deletar Usuário"
+                             className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
+                             title="Deletar Usuário"
+                             aria-label={`Deletar usuário ${profile.name || profile.email || profile.id}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

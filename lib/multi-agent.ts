@@ -1,7 +1,6 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { supabase } from '@/lib/supabase';
-import { getCollectionStage } from '@/lib/finance';
+import { SupabaseClient } from '@supabase/supabase-js';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 
@@ -19,7 +18,7 @@ export interface AgentConfig {
   max_discount: number;
   tone: string;
   is_active: boolean;
-  rules?: Record<string, any>;
+  rules?: Record<string, unknown>;
 }
 
 export const DEFAULT_AGENTS: AgentConfig[] = [
@@ -144,12 +143,30 @@ Com base no risco, recomende a melhor estrutura de parcelamento e a entrada idea
   }
 ];
 
-export async function fetchAgents(userId?: string): Promise<AgentConfig[]> {
-  if (!supabase) return DEFAULT_AGENTS;
+/**
+ * Carrega agentes configurados para um tenant.
+ *
+ * @param userId  Quando informado (legado), mantém o filtro por user_id/is.null para
+ *                compatibilidade com dados antigos. Novos fluxos multi-tenant devem
+ *                passar `tenantId`.
+ * @param tenantId  Quando informado, filtra estritamente por `tenant_id` (ignora o
+ *                  filtro legado por user_id). Se nenhum contexto for informado,
+ *                  retorna os DEFAULT_AGENTS estáticos.
+ * @param database  Cliente Supabase; se ausente, retorna DEFAULT_AGENTS.
+ */
+export async function fetchAgents(
+  userId?: string,
+  database?: SupabaseClient,
+  tenantId?: string
+): Promise<AgentConfig[]> {
+  if (!database) return DEFAULT_AGENTS;
 
   try {
-    let query = supabase.from('agents').select('*');
-    if (userId) {
+    let query = database.from('agents').select('*');
+
+    if (tenantId) {
+      query = query.eq('tenant_id', tenantId);
+    } else if (userId) {
       query = query.or(`user_id.eq.${userId},user_id.is.null`);
     } else {
       query = query.is('user_id', null);

@@ -3,9 +3,21 @@ import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendMessage } from '@/lib/messaging';
-import { serverError } from '@/lib/api-auth';
+import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { recordAuditAction } from '@/lib/audit';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
+
+type AiProfile = {
+  ai_provider?: string;
+  ai_model?: string;
+  opencode_api_key?: string;
+  gemini_api_key?: string;
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+  openrouter_api_key?: string;
+  ollama_base_url?: string;
+};
 
 const SYSTEM_PROMPT = `Você é um agente de cobrança de dívidas educado, focado e objetivo trabalhando para um escritório de advocacia.
 Seu objetivo é iniciar a abordagem para tentar fechar um acordo de pagamento com o devedor.
@@ -24,18 +36,27 @@ Desconto Máximo Autorizado: {max_discount_margin}% (ou seja, o mínimo aceitáv
 
 export async function POST(req: NextRequest) {
   try {
-    const { caseId } = await req.json();
+    const body = await req.json();
+    const { caseId } = body;
+    if (typeof caseId !== 'string') {
+      return NextResponse.json({ error: 'caseId é obrigatório.' }, { status: 400 });
+    }
+
+    const tenant = await requireTenantContext(req, body.tenant_id);
+    if ('response' in tenant) return tenant.response;
+    const { ctx } = tenant;
 
     const admin = getSupabaseAdmin();
     if (!admin) {
       return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
     }
 
-    const { data: caseData, error: caseError } = await admin
+    const { data: caseData, error: caseError } = await ctx.supabase
       .from('cases')
-      .select('*')
+      .select('*, financial_titles(id, installment_number, original_value, current_value, due_date, status, contracts(id, contract_number, clients(name, document)))')
       .eq('id', caseId)
-      .single();
+      .eq('tenant_id', ctx.tenantId)
+      .maybeSingle();
 
     if (caseError || !caseData) {
       return NextResponse.json({ error: "Caso não encontrado" }, { status: 404 });
@@ -52,12 +73,12 @@ export async function POST(req: NextRequest) {
     let ollamaBaseUrl = 'http://localhost:11434';
 
     if (caseData.user_id) {
-      let profile: any = null;
+      let profile: AiProfile | null = null;
       const { data: rpcData, error: rpcErr } = await admin.rpc('get_user_ai_keys', { p_user_id: caseData.user_id });
-      if (!rpcErr && rpcData && rpcData.length > 0) profile = rpcData[0];
+      if (!rpcErr && rpcData && rpcData.length > 0) profile = rpcData[0] as AiProfile;
       if (!profile) {
         const { data } = await admin.from('profiles').select('*').eq('id', caseData.user_id).single();
-        profile = data;
+        profile = data as AiProfile | null;
       }
 
       if (profile) {
@@ -85,12 +106,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Chave de API não configurada para o provedor ${aiProvider}. Configure nas opções (Settings) ou nas variáveis de ambiente.` }, { status: 500 });
     }
 
-    const minAcceptable = caseData.updated_value * (1 - caseData.max_discount_margin / 100);
+    const title = Array.isArray(caseData.financial_titles) ? caseData.financial_titles[0] : caseData.financial_titles;
+    const relatedContract = title?.contracts;
+    const relatedClient = relatedContract?.clients;
+    const minAcceptable = Number(caseData.updated_value || caseData.original_value) * (1 - caseData.max_discount_margin / 100);
     const systemPrompt = SYSTEM_PROMPT
-      .replace(/{name}/g, caseData.name)
-      .replace('{updated_value}', caseData.updated_value.toFixed(2))
+      .replace(/{name}/g, relatedClient?.name || caseData.name)
+      .replace('{updated_value}', Number(caseData.updated_value || caseData.original_value).toFixed(2))
       .replace('{max_discount_margin}', caseData.max_discount_margin.toString())
-      .replace('{min_acceptable}', minAcceptable.toFixed(2));
+      .replace('{min_acceptable}', minAcceptable.toFixed(2))
+      + `\n\nCONTEXTO CANÔNICO:\nContrato: ${relatedContract?.contract_number || 'não informado'}\nTítulo: ${title?.installment_number || 'legado'}\nVencimento: ${title?.due_date || caseData.due_date}\nStatus do título: ${title?.status || 'não informado'}`;
 
     let aiText = "Olá, precisamos falar sobre uma pendência. Poderia confirmar se estou falando com " + caseData.name + "?";
 
@@ -147,15 +172,28 @@ export async function POST(req: NextRequest) {
         });
         if (response.choices[0].message.content) aiText = response.choices[0].message.content;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("AI API Error:", error);
-      return NextResponse.json({ error: `Erro na API do ${aiProvider}: ${error.message || String(error)}` }, { status: 500 });
+      const message = error instanceof Error ? error.message : String(error);
+      return NextResponse.json({ error: `Erro na API do ${aiProvider}: ${message}` }, { status: 500 });
     }
 
-    await admin.from('messages').insert({
+    const { error: messageError } = await ctx.supabase.from('messages').insert({
+      tenant_id: ctx.tenantId,
       case_id: caseId,
       role: 'ai',
       content: aiText
+    });
+    if (messageError) throw messageError;
+
+    await recordAuditAction(ctx.supabase, {
+      tenantId: ctx.tenantId,
+      entityType: 'message',
+      entityId: caseId,
+      caseId,
+      actorUserId: ctx.userId,
+      action: 'AI_MESSAGE_SENT',
+      metadata: { source: 'start-negotiation', content_length: aiText.length },
     });
 
     if (caseData.phone || caseData.telegram_chat_id) {
@@ -165,11 +203,29 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    await admin.from('cases').update({ status: 'in_negotiation' }).eq('id', caseId);
+    const { data: updatedCase, error: statusError } = await ctx.supabase
+      .from('cases')
+      .update({ status: 'in_negotiation' })
+      .eq('id', caseId)
+      .eq('tenant_id', ctx.tenantId)
+      .select('*')
+      .single();
+    if (statusError) throw statusError;
+    await recordAuditAction(ctx.supabase, {
+      tenantId: ctx.tenantId,
+      entityType: 'case',
+      entityId: caseId,
+      caseId,
+      actorUserId: ctx.userId,
+      action: 'STATUS_CHANGE',
+      before: caseData,
+      after: updatedCase,
+      metadata: { source: 'start-negotiation' },
+    });
 
     return NextResponse.json({ text: aiText, newStatus: 'in_negotiation' });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     return serverError('start-negotiation error', error);
   }
 }

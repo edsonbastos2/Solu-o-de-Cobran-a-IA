@@ -42,6 +42,39 @@ export function getDaysOverdue(dueDate: Date | string): number {
   }
 }
 
+export type FinancialTitleEligibilityReason = 'future' | 'today' | 'overdue' | 'paid' | 'cancelled';
+
+export interface FinancialTitleEligibility {
+  eligible: boolean;
+  reason: FinancialTitleEligibilityReason;
+  daysOverdue: number;
+}
+
+/** Regra de apresentação alinhada à RPC: vencimento hoje ainda não venceu. */
+export function getFinancialTitleEligibility(
+  dueDate: Date | string,
+  status: string,
+  today = new Date()
+): FinancialTitleEligibility {
+  const daysOverdue = getDaysOverdue(dueDate);
+  const normalizedStatus = status.toLowerCase();
+
+  if (['paid', 'settled', 'recovered'].includes(normalizedStatus)) {
+    return { eligible: false, reason: 'paid', daysOverdue };
+  }
+  if (['cancelled', 'canceled'].includes(normalizedStatus)) {
+    return { eligible: false, reason: 'cancelled', daysOverdue };
+  }
+
+  const due = typeof dueDate === 'string' ? parseISO(dueDate) : dueDate;
+  const reference = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+
+  if (dueDay > reference) return { eligible: false, reason: 'future', daysOverdue };
+  if (dueDay.getTime() === reference.getTime()) return { eligible: false, reason: 'today', daysOverdue };
+  return { eligible: true, reason: 'overdue', daysOverdue };
+}
+
 export function getCollectionStage(
   dueDate: Date | string,
   maxDiscountMargin: number = 10,
@@ -151,7 +184,21 @@ export function getCollectionStage(
   };
 }
 
-export function generateCaseDossier(caseData: any, messages: any[]): string {
+export function generateCaseDossier(
+  caseData: {
+    due_date: string | Date;
+    max_discount_margin: number;
+    status?: string;
+    original_value?: number;
+    updated_value?: number;
+    name?: string;
+    phone?: string;
+    debtor_document?: string;
+    debtor_email?: string;
+    debtor_address?: string;
+  },
+  messages: { role: string; content: string; created_at?: string | Date }[]
+): string {
   const stage = getCollectionStage(caseData.due_date, caseData.max_discount_margin, caseData.status);
   const formattedOriginal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseData.original_value || 0);
   const formattedUpdated = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(caseData.updated_value || 0);
@@ -160,7 +207,7 @@ export function generateCaseDossier(caseData: any, messages: any[]): string {
 
   const historyLines = (messages || []).map(m => {
     const roleLabel = m.role === 'user' ? 'DEVEDOR' : m.role === 'ai' ? 'IA' : 'ATENDENTE';
-    const dateStr = new Date(m.created_at).toLocaleString('pt-BR');
+    const dateStr = new Date(m.created_at as string).toLocaleString('pt-BR');
     return `[${dateStr}] ${roleLabel}: ${m.content}`;
   }).join('\n');
 
@@ -170,8 +217,8 @@ DOSSIÊ DE COBRANÇA - HISTÓRICO PARA SUPERVISOR / ESCRITÓRIO PARCEIRO
 
 1. DADOS DO CLIENTE & DÍVIDA
 --------------------------------------------------
-Nome do Devedor: ${caseData.name}
-Telefone/WhatsApp: ${caseData.phone}
+Nome do Devedor: ${caseData.name ?? 'Não informado'}
+Telefone/WhatsApp: ${caseData.phone ?? 'Não informado'}
 CPF/CNPJ: ${caseData.debtor_document || 'Não informado'}
 E-mail: ${caseData.debtor_email || 'Não informado'}
 Endereço: ${caseData.debtor_address || 'Não informado'}
@@ -194,7 +241,7 @@ Total de Mensagens Trocadas: ${messages.length}
 --------------------------------------------------
 ${historyLines || 'Nenhuma mensagem registrada até o momento.'}
 
-==================================================
+=================================================
 Relatório gerado em: ${new Date().toLocaleString('pt-BR')}
 ==================================================`;
 }

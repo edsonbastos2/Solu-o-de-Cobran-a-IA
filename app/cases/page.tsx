@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
+import { useActiveTenant } from '@/hooks/use-active-tenant';
 import { Header } from '@/components/header';
 import { 
   FolderKanban, 
@@ -14,7 +14,6 @@ import {
   CheckCircle, 
   Clock, 
   Eye, 
-  Trash2, 
   Play, 
   Radio, 
   RefreshCw, 
@@ -22,21 +21,21 @@ import {
 } from 'lucide-react';
 import { formatPhoneInput } from '@/lib/utils';
 import { Pagination } from '@/components/pagination';
-import { Case } from '@/lib/types';
+import { Case, CasesListResponse } from '@/lib/types';
 
-import { fetcher } from "@/lib/api";
+import { fetcher, fetchWithAuth } from '@/lib/api';
 
 export default function CasesPage() {
-  const { user } = useAuth();
+  const { user, authLoading, tenantId, tenantQuery, tenantPath, needsTenantSelection } = useActiveTenant();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [startingNegotiationId, setStartingNegotiationId] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const limit = 10;
 
-  const queryUrl = `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}`;
-  const { data, isLoading: loading, mutate } = useSWR([queryUrl, user?.id || 'anon'], ([url]) => fetcher(url), {
+  const queryUrl = `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}${tenantQuery ? `&${tenantQuery}` : ''}`;
+  const canFetch = !authLoading && Boolean(user) && !needsTenantSelection;
+  const { data, error, isLoading: loading, mutate } = useSWR<CasesListResponse>(canFetch ? [queryUrl, user?.id || 'anon', tenantId] : null, ([url]) => fetcher(url), {
     refreshInterval: 5000 // Polling fallback every 5s
   });
 
@@ -44,9 +43,10 @@ export default function CasesPage() {
 
   // Real-time subscription to cases changes
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
 
-    const channel = supabase
+    const channel = client
       .channel('realtime-cases-list')
       .on(
         'postgres_changes',
@@ -62,17 +62,32 @@ export default function CasesPage() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
   }, [mutate]);
+
+  if (needsTenantSelection) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+        <Header />
+        <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-12">
+          <div className="bg-white rounded-2xl border border-amber-200 p-8 text-center shadow-sm">
+            <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+            <h1 className="text-xl font-bold text-slate-900">Selecione um tenant para continuar</h1>
+            <p className="text-sm text-slate-500 mt-2">O módulo de casos exige um tenant ativo para usuários super-admin. Nenhuma operação foi executada.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   const handleStartNegotiation = async (caseId: string) => {
     setStartingNegotiationId(caseId);
     try {
-      const res = await fetch('/api/start-negotiation', {
+      const res = await fetchWithAuth('/api/start-negotiation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caseId })
+        body: JSON.stringify({ caseId, tenant_id: tenantId || undefined })
       });
 
       const resData = await res.json();
@@ -81,28 +96,10 @@ export default function CasesPage() {
       } else {
         mutate();
       }
-    } catch (err: any) {
-      alert('Erro ao conectar com o servidor: ' + err.message);
+    } catch (err: unknown) {
+      alert('Erro ao conectar com o servidor: ' + (err instanceof Error ? err.message : 'erro desconhecido'));
     } finally {
       setStartingNegotiationId(null);
-    }
-  };
-
-  const handleDeleteCase = async (caseId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este caso e todo o seu histórico de mensagens?')) return;
-    setDeletingId(caseId);
-    try {
-      const res = await fetch(`/api/cases/${caseId}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const resData = await res.json();
-        alert(resData.error || 'Erro ao excluir caso');
-      } else {
-        mutate();
-      }
-    } catch (err: any) {
-      alert('Erro na requisição: ' + err.message);
-    } finally {
-      setDeletingId(null);
     }
   };
 
@@ -179,6 +176,7 @@ export default function CasesPage() {
               onClick={() => mutate()}
               className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
               title="Atualizar lista"
+              aria-label="Atualizar lista de casos"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -231,10 +229,12 @@ export default function CasesPage() {
         {/* Filters and Search */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
           <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-slate-50/50">
-            {/* Search Input */}
+              {/* Search Input */}
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <label htmlFor="cases-search" className="sr-only">Buscar casos</label>
               <input
+                id="cases-search"
                 type="text"
                 placeholder="Buscar por nome, telefone, documento ou email..."
                 value={search}
@@ -278,18 +278,36 @@ export default function CasesPage() {
             <table className="w-full text-left text-sm text-slate-600">
               <thead className="bg-slate-100/70 text-slate-500 font-semibold uppercase text-xs tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-3.5">Devedor</th>
-                  <th className="px-6 py-3.5">Contato</th>
-                  <th className="px-6 py-3.5">Valores (Orig. / Atual)</th>
-                  <th className="px-6 py-3.5">Vencimento</th>
-                  <th className="px-6 py-3.5">Status</th>
-                  <th className="px-6 py-3.5 text-right">Ações</th>
+                  <th scope="col" className="px-6 py-3.5">Devedor</th>
+                  <th scope="col" className="px-6 py-3.5">Contato</th>
+                  <th scope="col" className="px-6 py-3.5">Valores (Orig. / Atual)</th>
+                  <th scope="col" className="px-6 py-3.5">Vencimento</th>
+                  <th scope="col" className="px-6 py-3.5">Origem</th>
+                  <th scope="col" className="px-6 py-3.5">Status</th>
+                  <th scope="col" className="px-6 py-3.5 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200/70 bg-white">
-                {loading && cases.length === 0 ? (
+                {error ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-red-600">
+                      <div className="max-w-sm mx-auto flex flex-col items-center gap-2">
+                        <AlertCircle className="w-8 h-8" />
+                        <p className="font-semibold">Não foi possível carregar a lista de casos</p>
+                        <p className="text-xs text-red-500">{error instanceof Error ? error.message : 'Tente novamente.'}</p>
+                        <button
+                          type="button"
+                          onClick={() => mutate()}
+                          className="mt-2 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold"
+                        >
+                          Tentar novamente
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : loading && cases.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                       <div className="flex flex-col items-center gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-emerald-600" />
                         <span>Carregando casos em tempo real...</span>
@@ -298,7 +316,7 @@ export default function CasesPage() {
                   </tr>
                 ) : cases.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                       <div className="max-w-sm mx-auto flex flex-col items-center">
                         <FolderKanban className="w-12 h-12 text-slate-300 mb-3" />
                         <p className="font-semibold text-slate-700 text-base">Nenhum caso encontrado</p>
@@ -360,6 +378,24 @@ export default function CasesPage() {
                           </div>
                         </td>
 
+                        {/* Origem canônica ou contexto legado */}
+                        <td className="px-6 py-4">
+                          {c.financial_title ? (
+                            <>
+                              <div className="font-medium text-slate-800">
+                                Título #{c.financial_title.installment_number}
+                              </div>
+                              <div className="text-xs text-slate-400">
+                                {c.contract?.contract_number ? `Contrato ${c.contract.contract_number}` : 'Contrato vinculado'}
+                              </div>
+                            </>
+                          ) : (
+                            <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 border border-amber-200">
+                              Contexto legado incompleto
+                            </span>
+                          )}
+                        </td>
+
                         {/* Status */}
                         <td className="px-6 py-4">
                           {getStatusBadge(c.status)}
@@ -385,7 +421,7 @@ export default function CasesPage() {
                             )}
 
                             <Link
-                              href={`/cases/${c.id}`}
+                               href={`/cases/${c.id}${tenantPath}`}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition-all shadow-sm"
                               title="Acompanhar em Tempo Real"
                             >
@@ -393,18 +429,6 @@ export default function CasesPage() {
                               Ver Chat Ao Vivo
                             </Link>
 
-                            <button
-                              onClick={() => handleDeleteCase(c.id)}
-                              disabled={deletingId === c.id}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Excluir Caso"
-                            >
-                              {deletingId === c.id ? (
-                                <RefreshCw className="w-4 h-4 animate-spin text-red-600" />
-                              ) : (
-                                <Trash2 className="w-4 h-4" />
-                              )}
-                            </button>
                           </div>
                         </td>
                       </tr>

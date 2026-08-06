@@ -1,127 +1,126 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer, getSupabaseServerWithAdminFallback } from '@/lib/supabase-server';
+import { requireTenantContext, serverError } from '@/lib/api-auth';
 import { calculateUpdatedValue } from '@/lib/finance';
-import { requireUser, serverError } from '@/lib/api-auth';
-import { validateFields } from '@/lib/api-validate';
+import { CaseWithRelations, CreateCaseResult } from '@/lib/types';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const CASE_SELECT = `
+  *,
+  financial_titles (
+    id, tenant_id, contract_id, client_id, installment_number,
+    external_reference, description, original_value, current_value,
+    due_date, status, paid_at, legacy_installment_id, metadata,
+    created_at, updated_at,
+    contracts (
+      id, tenant_id, client_id, contract_number, type,
+      clients (id, tenant_id, name, document, phone, email, address)
+    )
+  )
+`;
+
+function mapRpcError(code: string | null) {
+  switch (code) {
+    case 'TITLE_NOT_OVERDUE':
+      return { status: 400, error: 'O título ainda não está vencido. A cobrança pode ser iniciada após o vencimento.', code };
+    case 'TITLE_NOT_COLLECTIBLE':
+      return { status: 400, error: 'O título está pago, quitado ou cancelado e não pode gerar cobrança.', code };
+    case 'ACTIVE_CASE_EXISTS':
+      return { status: 409, error: 'Já existe um caso ativo para este título financeiro.', code };
+    case 'TITLE_NOT_FOUND':
+      return { status: 404, error: 'Título financeiro não encontrado ou indisponível para este tenant.', code };
+    case 'TENANT_REQUIRED':
+      return { status: 400, error: 'Tenant explícito é obrigatório para esta operação.', code };
+    default:
+      return null;
+  }
+}
 
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const tenant = await requireTenantContext(req, searchParams.get('tenant_id'));
+  if ('response' in tenant) return tenant.response;
+
   try {
-    const r = await requireUser(req);
-    if ('response' in r) return r.response;
-
-    const supabase = await getSupabaseServerWithAdminFallback(req);
-    if (!supabase) {
-      return NextResponse.json({ cases: [], totalPages: 1, total: 0 });
-    }
-
-    const { searchParams } = new URL(req.url);
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '10')));
-    const search = (searchParams.get('search') || '').slice(0, 100);
-    const status = (searchParams.get('status') || '').slice(0, 50);
-
+    const { ctx } = tenant;
+    const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('limit') || '10', 10) || 10));
+    const search = (searchParams.get('search') || '').slice(0, 100).trim();
+    const status = (searchParams.get('status') || '').slice(0, 50).trim();
     const offset = (page - 1) * limit;
 
-    let query = supabase.from('cases').select('*', { count: 'exact' });
+    let query = ctx.supabase
+      .from('cases')
+      .select(CASE_SELECT, { count: 'exact' })
+      .eq('tenant_id', ctx.tenantId);
 
-    if (search.trim()) {
-      const term = `%${search.trim()}%`;
+    if (search) {
+      const term = `%${search}%`;
       query = query.or(`name.ilike.${term},phone.ilike.${term},debtor_document.ilike.${term},debtor_email.ilike.${term}`);
     }
+    if (status && status !== 'all') query = query.eq('status', status);
 
-    if (status.trim() && status !== 'all') {
-      query = query.eq('status', status);
-    }
-
-    const { data: cases, count, error } = await query
+    const { data, count, error } = await query
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (error) {
-      return serverError('cases GET error', error);
-    }
+    if (error) return serverError('cases GET error', error);
 
-    const casesWithRecalculatedValue = (cases || []).map((c: any) => {
-      const recalculated = calculateUpdatedValue(Number(c.original_value) || 0, new Date(c.due_date));
+    const cases = (data || []).map((caseData: CaseWithRelations) => {
+      const title = Array.isArray(caseData.financial_titles) ? caseData.financial_titles[0] : caseData.financial_titles;
+      const contract = title?.contracts || null;
+      const client = contract?.clients || null;
+      const recalculated = calculateUpdatedValue(Number(caseData.original_value) || 0, new Date(caseData.due_date));
       return {
-        ...c,
-        updated_value: recalculated > Number(c.original_value) ? recalculated : Number(c.updated_value || c.original_value)
+        ...caseData,
+        financial_titles: undefined,
+        financial_title: title || null,
+        contract,
+        client,
+        legacy_context: caseData.legacy_context ?? !title,
+        updated_value: recalculated > Number(caseData.original_value)
+          ? recalculated
+          : Number(caseData.updated_value || caseData.original_value),
       };
     });
 
     const total = count || 0;
-    const totalPages = Math.ceil(total / limit) || 1;
-
-    return NextResponse.json({ cases: casesWithRecalculatedValue, totalPages, total, page });
-  } catch (err) {
-    return serverError('cases GET exception', err);
+    return NextResponse.json({ cases, totalPages: Math.ceil(total / limit) || 1, total, page });
+  } catch (error) {
+    return serverError('cases GET exception', error);
   }
 }
 
 export async function POST(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const tenant = await requireTenantContext(req, searchParams.get('tenant_id'));
+  if ('response' in tenant) return tenant.response;
+
   try {
-    const r = await requireUser(req);
-    if ('response' in r) return r.response;
-    const { ctx } = r;
+    const { ctx } = tenant;
+    const body = await req.json().catch(() => null);
+    const financialTitleId = body?.financial_title_id;
 
-    const supabase = getSupabaseServer(req);
-    if (!supabase) {
-      return NextResponse.json({ error: 'Servidor não configurado.' }, { status: 500 });
+    if (typeof financialTitleId !== 'string' || !UUID_PATTERN.test(financialTitleId)) {
+      return NextResponse.json({ error: 'financial_title_id é obrigatório e deve ser um UUID válido.', code: 'TITLE_NOT_FOUND' }, { status: 400 });
     }
 
-    const body = await req.json();
-    const err = validateFields(body, [
-      { name: 'name', type: 'string' },
-      { name: 'phone', type: 'string' },
-      { name: 'original_value', type: 'number' },
-      { name: 'due_date', type: 'string' }
-    ]);
-    if (err) return err;
+    const { data, error } = await ctx.supabase.rpc('create_collection_case', {
+      p_financial_title_id: financialTitleId,
+      p_tenant_id: ctx.tenantId,
+    });
 
-    const {
-      name, phone, original_value, due_date,
-      max_discount_margin, debtor_email, debtor_document, debtor_address, user_id
-    } = body;
+    if (error) return serverError('cases POST RPC error', error);
 
-    // Somente superadmin pode designar caso para outro usuário
-    const targetUserId = (ctx.isSuperAdmin && user_id) ? user_id : ctx.userId;
-
-    const origVal = Number(original_value);
-    if (origVal <= 0) {
-      return NextResponse.json({ error: 'Valor deve ser maior que zero.' }, { status: 400 });
+    const result = (Array.isArray(data) ? data[0] : data) as CreateCaseResult | null;
+    const mappedError = mapRpcError(result?.error_code || null);
+    if (mappedError) {
+      return NextResponse.json({ error: mappedError.error, code: mappedError.code }, { status: mappedError.status });
     }
-    const discountMargin = typeof max_discount_margin === 'number' ? Math.min(100, Math.max(0, max_discount_margin)) : 10;
+    if (!result?.case) return serverError('cases POST RPC returned no case');
 
-    const updatedVal = calculateUpdatedValue(origVal, new Date(due_date));
-    const cleanPhone = String(phone).replace(/\D/g, '');
-    if (cleanPhone.length < 10 || cleanPhone.length > 13) {
-      return NextResponse.json({ error: 'Telefone inválido.' }, { status: 400 });
-    }
-
-    const { data: newCase, error } = await supabase
-      .from('cases')
-      .insert({
-        name: String(name).trim().slice(0, 200),
-        phone: cleanPhone,
-        original_value: origVal,
-        updated_value: updatedVal,
-        due_date,
-        max_discount_margin: discountMargin,
-        status: 'not_started',
-        debtor_email: typeof debtor_email === 'string' ? debtor_email.trim() || null : null,
-        debtor_document: typeof debtor_document === 'string' ? debtor_document.trim() || null : null,
-        debtor_address: typeof debtor_address === 'string' ? debtor_address.trim() || null : null,
-        user_id: targetUserId || null
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      return serverError('cases POST insert error', error);
-    }
-
-    return NextResponse.json({ ok: true, case: newCase }, { status: 201 });
-  } catch (err) {
-    return serverError('cases POST exception', err);
+    return NextResponse.json({ ok: true, case: result.case }, { status: 201 });
+  } catch (error) {
+    return serverError('cases POST exception', error);
   }
 }

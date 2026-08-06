@@ -2,14 +2,16 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { ContractExtractionResult } from '@/lib/types';
 import { Header } from '@/components/header';
 import { Loader2, Upload, File, X } from 'lucide-react';
 import { formatPhoneInput } from '@/lib/utils';
+import { fetchWithAuth } from '@/lib/api';
+import { useActiveTenant } from '@/hooks/use-active-tenant';
 
 export default function NewContractPage() {
   const router = useRouter();
+  const { authLoading, isConfigured, tenantId, tenantQuery, tenantPath, needsTenantSelection } = useActiveTenant();
   const [contractText, setContractText] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -23,13 +25,14 @@ export default function NewContractPage() {
 
   useEffect(() => {
     const fetchPolicies = async () => {
-      const { data } = await supabase.from('collection_policies').select('id, name').eq('active', true).order('name');
-      if (data) {
-        setPolicies(data);
-      }
+      if (authLoading || !isConfigured || needsTenantSelection) return;
+      const response = await fetchWithAuth(`/api/policies?page=1&limit=100&active=true${tenantQuery ? `&${tenantQuery}` : ''}`);
+      if (!response.ok) return;
+      const data = await response.json() as { policies?: Array<{ id: string; name: string }> };
+      setPolicies(data.policies || []);
     };
     fetchPolicies();
-  }, []);
+  }, [authLoading, isConfigured, needsTenantSelection, tenantQuery]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -67,51 +70,34 @@ export default function NewContractPage() {
 
   const handleSave = async () => {
     if (!extractedData) return;
+    if (!isConfigured) {
+      alert('O modo demo não permite salvar contratos. Configure o Supabase para continuar.');
+      return;
+    }
+    if (needsTenantSelection) {
+      alert('Selecione um tenant ativo antes de salvar o contrato.');
+      return;
+    }
     setIsSaving(true);
     
     try {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-      const userId = userData.user?.id;
-
-      // 1. Insert or get client
-      let clientId = '';
-      const { data: existingClients } = await supabase
-        .from('clients')
-        .select('id')
-        .eq('document', extractedData.client_document)
-        .limit(1);
-
-      if (existingClients && existingClients.length > 0) {
-        clientId = existingClients[0].id;
-      } else {
-        const { data: newClient, error: clientError } = await supabase
-          .from('clients')
-          .insert({
-            user_id: userId,
-            name: extractedData.client_name || 'Desconhecido',
-            document: extractedData.client_document || '00000000000',
-            address: extractedData.client_address,
-            phone: extractedData.client_phone ? formatPhoneInput(extractedData.client_phone) : null,
-            email: extractedData.client_email,
-          })
-          .select()
-          .single();
-          
-        if (clientError) throw clientError;
-        clientId = newClient.id;
-      }
-
-      // 2. Insert Contract
-      const { data: newContract, error: contractError } = await supabase
-        .from('contracts')
-        .insert({
-          user_id: userId,
-          client_id: clientId,
+      const response = await fetchWithAuth('/api/contracts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId || undefined,
+          collection_policy_id: selectedPolicyId || null,
+          client_name: extractedData.client_name,
+          client_document: extractedData.client_document,
+          client_address: extractedData.client_address,
+          client_phone: extractedData.client_phone ? formatPhoneInput(extractedData.client_phone) : null,
+          client_email: extractedData.client_email,
           contract_number: extractedData.contract_number,
           type: extractedData.type,
           start_date: extractedData.start_date || null,
           due_date: extractedData.due_date || null,
+          total_value: extractedData.total_value,
+          installments_count: extractedData.installments_count,
           interest_rate: extractedData.interest_rate,
           penalty_rate: extractedData.penalty_rate,
           monetary_correction_index: extractedData.monetary_correction_index,
@@ -120,58 +106,17 @@ export default function NewContractPage() {
           negative_allowed: extractedData.negative_allowed,
           protest_allowed: extractedData.protest_allowed,
           forum: extractedData.forum,
-          collection_policy_id: selectedPolicyId || null,
-        })
-        .select()
-        .single();
-        
-      if (contractError) throw contractError;
-
-      // 3. Generate Installments
-      if (extractedData.installments_count && extractedData.total_value) {
-        const installmentValue = extractedData.total_value / extractedData.installments_count;
-        const installments = [];
-        
-        let currentDate = extractedData.start_date ? new Date(extractedData.start_date) : new Date();
-        
-        for (let i = 1; i <= extractedData.installments_count; i++) {
-          // Add a month for each installment roughly
-          currentDate.setMonth(currentDate.getMonth() + 1);
-          
-          installments.push({
-            contract_id: newContract.id,
-            installment_number: i,
-            original_value: installmentValue,
-            due_date: currentDate.toISOString().split('T')[0],
-            status: 'pending'
-          });
-        }
-        
-        if (installments.length > 0) {
-          const { error: installmentsError } = await supabase
-            .from('installments')
-            .insert(installments);
-            
-          if (installmentsError) throw installmentsError;
-        }
-      }
+        }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível salvar o contrato.');
 
       alert('Contrato salvo com sucesso!');
-      router.push('/contracts');
+      router.push(`/contracts${tenantPath}`);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      let errorMsg = error.message;
-      if (error.code === '23505') {
-        if (error.message.includes('contracts_contract_number_key')) {
-          errorMsg = 'Este número de contrato já está cadastrado no sistema.';
-        } else if (error.message.includes('clients_email_key')) {
-          errorMsg = 'O email do cliente extraído já está cadastrado para outro cliente.';
-        } else if (error.message.includes('clients_document_key')) {
-          errorMsg = 'O documento do cliente extraído já está cadastrado.';
-        }
-      }
-      alert('Erro ao salvar contrato: ' + errorMsg);
+      alert('Erro ao salvar contrato: ' + (error instanceof Error ? error.message : 'Tente novamente.'));
     } finally {
       setIsSaving(false);
     }
@@ -190,29 +135,30 @@ export default function NewContractPage() {
             
             {/* File Upload Area */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Arquivo PDF (Opcional)</label>
+              <label htmlFor="contract-file" className="block text-sm font-medium text-gray-700 mb-2">Arquivo PDF (Opcional)</label>
               {!file ? (
-                <div 
+                <label
+                  htmlFor="contract-file"
                   className="border-2 border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors"
-                  onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload className="w-8 h-8 text-gray-400 mb-2" />
                   <p className="text-sm text-gray-600">Clique para selecionar um arquivo PDF</p>
                   <p className="text-xs text-gray-500 mt-1">O arquivo será lido com IA.</p>
-                </div>
+                </label>
               ) : (
                 <div className="flex items-center justify-between p-4 border border-blue-200 bg-blue-50 rounded-lg">
                   <div className="flex items-center">
                     <File className="w-6 h-6 text-blue-600 mr-3" />
                     <span className="text-sm font-medium text-blue-900 truncate max-w-[200px]">{file.name}</span>
                   </div>
-                  <button onClick={removeFile} className="p-1 hover:bg-blue-100 rounded-full transition-colors text-blue-600">
+                  <button type="button" onClick={removeFile} aria-label="Remover arquivo selecionado" className="p-1 hover:bg-blue-100 rounded-full transition-colors text-blue-600">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
               )}
               <input 
                 type="file" 
+                id="contract-file"
                 ref={fileInputRef} 
                 onChange={handleFileChange} 
                 accept="application/pdf" 
@@ -226,8 +172,9 @@ export default function NewContractPage() {
               <div className="flex-grow border-t border-gray-200"></div>
             </div>
 
-            <label className="block text-sm font-medium text-gray-700 mb-2">Cole o texto do contrato</label>
+            <label htmlFor="contract-text" className="block text-sm font-medium text-gray-700 mb-2">Cole o texto do contrato</label>
             <textarea
+              id="contract-text"
               className="flex-1 min-h-[200px] w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono text-gray-700"
               placeholder="Cole aqui o conteúdo do contrato..."
               value={contractText}
@@ -286,8 +233,9 @@ export default function NewContractPage() {
                 </div>
                 
                 <div className="mt-8 border-t border-gray-100 pt-6">
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Vincular Política de Cobrança (Opcional)</h3>
+                  <label htmlFor="contract-policy" className="block text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Vincular Política de Cobrança (Opcional)</label>
                   <select
+                    id="contract-policy"
                     value={selectedPolicyId}
                     onChange={(e) => setSelectedPolicyId(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 bg-white"

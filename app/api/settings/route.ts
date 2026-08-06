@@ -15,6 +15,13 @@ const SECRET_FIELDS = [
   'telegram_bot_token'
 ] as const;
 
+type SecretField = typeof SECRET_FIELDS[number];
+type ProfileSecretRow = Partial<Record<SecretField, string | null>>;
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 // GET: retorna o perfil do usuário logado, SEM as chaves (apenas flags indicando se estão configuradas)
 export async function GET(req: NextRequest) {
   try {
@@ -35,7 +42,7 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (error) {
-      const message = (error as any)?.message || String(error);
+      const message = getErrorMessage(error);
       console.error('[settings GET] DB error:', message);
       if (message?.includes('does not exist') || message?.includes('column')) {
         return NextResponse.json(
@@ -52,7 +59,7 @@ export async function GET(req: NextRequest) {
     if (admin) {
       for (const f of SECRET_FIELDS) {
         const { data } = await admin.from('profiles').select(f).eq('id', ctx.userId).maybeSingle();
-        flags[`${f}_set`] = !!(data && (data as any)[f]);
+         flags[`${f}_set`] = Boolean((data as ProfileSecretRow | null)?.[f]);
       }
     }
 
@@ -115,7 +122,11 @@ export async function PUT(req: NextRequest) {
       // Criptografa via RPC
       const { data: enc, error: encErr } = await admin.rpc('ai_encrypt', { plain: v });
       if (encErr || !enc) {
-        return serverError(`settings PUT encrypt ${field} error`, encErr);
+        console.error(`[settings PUT] encryption failed for ${field}:`, encErr);
+        return NextResponse.json(
+          { error: 'A criptografia das chaves não está configurada. Aplique supabase_ai_keys_encryption.sql no Supabase e configure a chave ai_keys_encryption_key no Vault.' },
+          { status: 503 }
+        );
       }
       update[field] = enc;
     }

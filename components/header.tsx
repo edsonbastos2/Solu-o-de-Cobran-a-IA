@@ -4,15 +4,17 @@ import { useState } from 'react';
 import { Bot, LogOut, Shield, Users, LayoutDashboard, Cpu, Menu, X, Settings, FolderKanban } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, usePathname } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useActiveTenant } from '@/hooks/use-active-tenant';
+import { TenantSwitcher } from '@/components/tenant-switcher';
 import Link from 'next/link';
 
 export function Header() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, profile } = useAuth();
+  const { user, profile, tenantPath } = useActiveTenant();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isSuperAdmin = profile?.is_super_admin === true;
+  const withTenant = (href: string) => href === '/admin/users' ? href : `${href}${tenantPath}`;
 
   const userName = profile?.name || user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split('@')[0] : 'Painel do Advogado');
 
@@ -58,11 +60,12 @@ export function Header() {
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="md:hidden p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
             aria-label="Abrir menu de navegação"
+            aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
 
-          <Link href="/" className="flex items-center gap-2.5 sm:gap-3 hover:opacity-80 transition-opacity">
+          <Link href={withTenant('/')} className="flex items-center gap-2.5 sm:gap-3 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
               <Bot className="w-5 h-5 text-black" />
             </div>
@@ -76,7 +79,7 @@ export function Header() {
               return (
                 <Link
                   key={link.href}
-                  href={link.href}
+                  href={withTenant(link.href)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                     active
                       ? 'bg-white/10 text-white'
@@ -93,6 +96,11 @@ export function Header() {
 
         <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm">
           {isSuperAdmin && (
+            <div className="hidden sm:block">
+              <TenantSwitcher />
+            </div>
+          )}
+          {isSuperAdmin && (
             <Link href="/admin/users" className="hidden sm:flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-md hover:bg-emerald-500/20 transition-colors font-medium border border-emerald-500/20">
               <Shield className="w-4 h-4" />
               Painel Admin
@@ -100,7 +108,7 @@ export function Header() {
           )}
           <span className="text-slate-500 hidden lg:inline">{userName}</span>
           <div className="w-px h-5 sm:h-6 bg-white/10 hidden sm:block"></div>
-          <Link href="/settings" className="hover:opacity-80 transition-opacity">
+           <Link href={withTenant('/settings')} className="hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-xs shadow-lg shrink-0">
               {getInitials(profile?.name || user?.user_metadata?.name, user?.email)}
             </div>
@@ -109,6 +117,7 @@ export function Header() {
             onClick={handleLogout}
             className="text-slate-400 hover:text-white transition-colors p-2"
             title="Sair"
+            aria-label="Sair"
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -127,7 +136,7 @@ export function Header() {
             return (
               <Link
                 key={link.href}
-                href={link.href}
+                href={withTenant(link.href)}
                 onClick={() => setMobileMenuOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   active
@@ -143,7 +152,7 @@ export function Header() {
 
           <div className="border-t border-white/5 pt-2 mt-2 space-y-1">
             <Link
-              href="/settings"
+               href={withTenant('/settings')}
               onClick={() => setMobileMenuOpen(false)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 pathname === '/settings'
@@ -154,6 +163,12 @@ export function Header() {
               <Settings className="w-4 h-4 text-slate-400" />
               Configurações
             </Link>
+
+            {isSuperAdmin && (
+              <div className="px-3 py-1">
+                <TenantSwitcher />
+              </div>
+            )}
 
             {isSuperAdmin && (
               <Link
@@ -178,6 +193,7 @@ export function Header() {
                   handleLogout();
                 }}
                 className="text-red-400 hover:text-red-300 flex items-center gap-1.5 text-xs font-medium py-1 px-2 rounded hover:bg-red-500/10 transition-colors"
+                aria-label="Sair"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 Sair

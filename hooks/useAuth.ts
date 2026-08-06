@@ -1,12 +1,19 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
 export type UserProfile = {
   id: string;
   is_super_admin: boolean;
   email?: string;
-  [key: string]: any;
+  name?: string | null;
+  phone?: string | null;
+  tenant_id?: string | null;
+  current_tenant_id?: string | null;
+  ai_provider?: string | null;
+  ai_model?: string | null;
+  messaging_provider?: string | null;
+  zapi_instance?: string | null;
 };
 
 export function useAuth() {
@@ -16,26 +23,27 @@ export function useAuth() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabase) {
+    const client = supabase;
+    if (!client) {
       setTimeout(() => setLoading(false), 0);
       return;
     }
 
     const fetchProfile = async (userId: string) => {
       try {
-        const { data } = await supabase
+        const { data } = await client
           .from('profiles')
           .select('*')
           .eq('id', userId)
           .single();
         setProfile(data);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('Error fetching profile:', error);
       }
     };
 
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
+    client.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -46,7 +54,7 @@ export function useAuth() {
     });
 
     // Listen for changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -62,6 +70,6 @@ export function useAuth() {
     };
   }, []);
 
-  return { user, profile, session, loading };
+  return { user, profile, session, loading, isConfigured: isSupabaseConfigured };
 }
 

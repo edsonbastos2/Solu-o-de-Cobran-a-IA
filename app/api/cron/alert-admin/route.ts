@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { recordAuditAction } from '@/lib/audit';
 
 // Função simulada para envio de e-mail ao administrador
 async function sendAdminEmail(caseId: string, caseName: string, hours: number) {
@@ -28,7 +29,8 @@ export async function GET(req: NextRequest) {
     const { data: cases, error: casesError } = await supabase
       .from('cases')
       .select('*')
-      .eq('status', 'in_negotiation');
+      .eq('status', 'in_negotiation')
+      .not('tenant_id', 'is', null);
 
     if (casesError) throw casesError;
 
@@ -67,7 +69,20 @@ export async function GET(req: NextRequest) {
         await supabase
           .from('cases')
           .update({ status: 'needs_attention' })
-          .eq('id', c.id);
+          .eq('id', c.id)
+          .eq('tenant_id', c.tenant_id);
+
+        await recordAuditAction(supabase, {
+          tenantId: c.tenant_id,
+          entityType: 'case',
+          entityId: c.id,
+          caseId: c.id,
+          actorUserId: c.user_id || null,
+          action: 'STATUS_CHANGE',
+          before: c,
+          after: { ...c, status: 'needs_attention' },
+          metadata: { source: 'cron-alert-admin' },
+        });
 
         alertedCases.push(c.id);
       }

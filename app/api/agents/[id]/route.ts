@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { requireTenantContext, serverError } from '@/lib/api-auth';
 
 export async function PUT(
   req: NextRequest,
@@ -9,9 +9,9 @@ export async function PUT(
     const { id } = await params;
     const body = await req.json();
 
-    if (!supabase) {
-      return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
-    }
+    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    if ('response' in tenantContext) return tenantContext.response;
+    const { supabase, tenantId } = tenantContext.ctx;
 
     const {
       name,
@@ -27,7 +27,7 @@ export async function PUT(
       is_active
     } = body;
 
-    const updateData: Record<string, any> = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString()
     };
 
@@ -47,15 +47,15 @@ export async function PUT(
       .from('agents')
       .update(updateData)
       .eq('id', id)
+      .eq('tenant_id', tenantId)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) return serverError('agents PUT update error', error);
 
     return NextResponse.json({ agent: data });
-  } catch (error: any) {
-    console.error("PUT Agent error:", error);
-    return NextResponse.json({ error: error.message || "Erro ao atualizar agente." }, { status: 500 });
+  } catch (error: unknown) {
+    return serverError('agents PUT exception', error);
   }
 }
 
@@ -66,17 +66,20 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    if (!supabase) {
-      return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
-    }
+    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    if ('response' in tenantContext) return tenantContext.response;
+    const { supabase, tenantId } = tenantContext.ctx;
 
-    const { error } = await supabase.from('agents').delete().eq('id', id);
+    const { error } = await supabase
+      .from('agents')
+      .delete()
+      .eq('id', id)
+      .eq('tenant_id', tenantId);
 
-    if (error) throw error;
+    if (error) return serverError('agents DELETE error', error);
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error("DELETE Agent error:", error);
-    return NextResponse.json({ error: error.message || "Erro ao remover agente." }, { status: 500 });
+  } catch (error: unknown) {
+    return serverError('agents DELETE exception', error);
   }
 }

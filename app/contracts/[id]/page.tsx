@@ -3,107 +3,149 @@
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { Header } from '@/components/header';
 import { ArrowLeft, FileText, CheckCircle, Clock, AlertCircle, Play, RefreshCw } from 'lucide-react';
-import { Contract, Client, Installment } from '@/lib/types';
+import { Client, ContractWithClient, FinancialTitleWithEligibility, FinancialTitlesResponse } from '@/lib/types';
 import { formatPhoneInput } from '@/lib/utils';
+import { fetchWithAuth } from '@/lib/api';
+import { useActiveTenant } from '@/hooks/use-active-tenant';
+
+type ContractLoadError = 'not_found' | 'network' | 'server';
+
+type CollectionError = {
+  titleId: string;
+  message: string;
+  code?: string;
+};
+
+const CASE_CREATION_ERROR_MESSAGES: Record<string, string> = {
+  ACTIVE_CASE_EXISTS: 'Já existe um caso ativo para este título financeiro. Não é possível abrir outro enquanto ele estiver em andamento.',
+  TITLE_NOT_OVERDUE: 'Este título ainda não está vencido. A cobrança só pode ser iniciada após o vencimento.',
+  TITLE_NOT_COLLECTIBLE: 'Este título está pago, quitado ou cancelado e não pode gerar cobrança.',
+  TITLE_NOT_FOUND: 'Título financeiro não encontrado ou indisponível para este tenant.',
+  TENANT_REQUIRED: 'Selecione um tenant ativo antes de iniciar a cobrança.',
+};
 
 export default function ContractDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const unwrappedParams = use(params);
   const contractId = unwrappedParams.id;
+  const { user, authLoading, tenantId, tenantQuery, tenantPath, needsTenantSelection } = useActiveTenant();
   
-  const [contract, setContract] = useState<any>(null);
+  const [contract, setContract] = useState<ContractWithClient | null>(null);
   const [client, setClient] = useState<Client | null>(null);
-  const [installments, setInstallments] = useState<Installment[]>([]);
+  const [financialTitles, setFinancialTitles] = useState<FinancialTitleWithEligibility[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<ContractLoadError | null>(null);
   const [startingCollectionId, setStartingCollectionId] = useState<string | null>(null);
+  const [collectionError, setCollectionError] = useState<CollectionError | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (authLoading) return;
+      if (!user || needsTenantSelection) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
+      setLoadError(null);
       try {
-        const { data: contractData, error: contractError } = await supabase
-          .from('contracts')
-          .select('*, clients(*), collection_policies(*)')
-          .eq('id', contractId)
-          .single();
+        const contractResponse = await fetchWithAuth(`/api/contracts/${contractId}${tenantPath}`);
+        const contractData = await contractResponse.json() as { contract?: ContractWithClient; error?: string };
+        if (!contractResponse.ok) {
+          if (contractResponse.status === 404) {
+            setLoadError('not_found');
+          } else {
+            setLoadError('server');
+          }
+          return;
+        }
 
-        if (contractError) throw contractError;
-        
-        setContract(contractData);
-        setClient(contractData.clients);
+        const typedContract = contractData.contract;
+        if (!typedContract) {
+          setLoadError('server');
+          return;
+        }
+        setContract(typedContract);
+        setClient(typedContract.clients ?? null);
 
-        const { data: installmentsData, error: installmentsError } = await supabase
-          .from('installments')
-          .select('*')
-          .eq('contract_id', contractId)
-          .order('installment_number', { ascending: true });
-
-        if (installmentsError) throw installmentsError;
-        setInstallments(installmentsData || []);
+        const titlesResponse = await fetchWithAuth(`/api/financial-titles?contract_id=${encodeURIComponent(contractId)}${tenantQuery ? `&${tenantQuery}` : ''}`);
+        const titlesData = await titlesResponse.json() as FinancialTitlesResponse & { error?: string };
+        if (!titlesResponse.ok) {
+          setLoadError(titlesResponse.status === 404 ? 'not_found' : 'server');
+          return;
+        }
+        setFinancialTitles(titlesData.financial_titles);
         
       } catch (err) {
         console.error(err);
+        setLoadError(err instanceof TypeError ? 'network' : 'server');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [contractId]);
+  }, [authLoading, contractId, needsTenantSelection, tenantPath, tenantQuery, user]);
 
-  const handleStartCollection = async (inst: Installment) => {
+  const handleStartCollection = async (title: FinancialTitleWithEligibility) => {
     if (!client || !contract) return;
-    
-    setStartingCollectionId(inst.id);
+    setCollectionError(null);
+    if (!title.eligible) {
+      setCollectionError({ titleId: title.id, message: getEligibilityMessage(title.eligibility_reason) });
+      return;
+    }
+
+    setStartingCollectionId(title.id);
     try {
-      const response = await fetch('/api/cases', {
+      const response = await fetchWithAuth('/api/cases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: client.name,
-          phone: client.phone,
-          debtor_document: client.document,
-          debtor_email: client.email,
-          debtor_address: client.address,
-          original_value: inst.original_value,
-          due_date: inst.due_date,
-          max_discount_margin: 10,
-          user_id: contract.user_id
-        })
+        body: JSON.stringify({ financial_title_id: title.id, tenant_id: tenantId || undefined })
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Erro ao criar caso');
-
-      // Update installment status to 'in_negotiation'
-      if (supabase) {
-        await supabase
-          .from('installments')
-          .update({ status: 'in_negotiation' })
-          .eq('id', inst.id);
+      const data = await response.json().catch(() => null) as { case?: { id: string }; error?: string; code?: string } | null;
+      if (!response.ok || !data?.case) {
+        const code = typeof data?.code === 'string' ? data.code : undefined;
+        const message = (code && CASE_CREATION_ERROR_MESSAGES[code])
+          || data?.error
+          || 'Não foi possível criar o caso de cobrança. Tente novamente.';
+        setCollectionError({ titleId: title.id, message, code });
+        return;
       }
 
       // Redirect to the new case
-      router.push(`/cases/${data.case.id}`);
-    } catch (err: any) {
-      alert(err.message);
+       router.push(`/cases/${data.case.id}${tenantPath}`);
+    } catch (err: unknown) {
+      console.error(err);
+      setCollectionError({
+        titleId: title.id,
+        message: 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.'
+      });
+    } finally {
       setStartingCollectionId(null);
     }
   };
 
+  const getEligibilityMessage = (reason: FinancialTitleWithEligibility['eligibility_reason']) => {
+    if (reason === 'future') return 'Este título ainda não venceu. Revise o vencimento antes de iniciar a cobrança.';
+    if (reason === 'today') return 'Este título vence hoje e só poderá gerar cobrança a partir de amanhã.';
+    if (reason === 'paid') return 'Este título já foi pago e não pode gerar um caso.';
+    if (reason === 'cancelled') return 'Este título foi cancelado e não pode gerar um caso.';
+    return 'Este título não está elegível para cobrança.';
+  };
+
   const getStatusBadge = (status: string) => {
     switch(status) {
-      case 'paid': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20"><CheckCircle className="w-3 h-3 mr-1"/> Pago</span>;
+      case 'paid': case 'settled': case 'recovered': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20"><CheckCircle className="w-3 h-3 mr-1"/> Pago</span>;
       case 'late': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/10"><AlertCircle className="w-3 h-3 mr-1"/> Atrasado</span>;
+      case 'cancelled': case 'canceled': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-600 ring-1 ring-inset ring-gray-500/10">Cancelado</span>;
       case 'in_negotiation': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10"><Clock className="w-3 h-3 mr-1"/> Em Acordo</span>;
       default: return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-50 text-gray-600 ring-1 ring-inset ring-gray-500/10">Pendente</span>;
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header />
@@ -114,35 +156,49 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
     );
   }
 
-  if (!contract) {
+  if (needsTenantSelection) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <Header />
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
-          <p className="text-red-500">Contrato não encontrado.</p>
+        <main className="flex-1 w-full max-w-3xl mx-auto px-4 py-12">
+          <div className="bg-white rounded-2xl border border-amber-200 p-8 text-center shadow-sm">
+            <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+            <h1 className="text-xl font-bold text-gray-900">Selecione um tenant para continuar</h1>
+            <p className="text-sm text-gray-500 mt-2">O contrato exige um tenant ativo para usuários super-admin. Nenhuma operação foi executada.</p>
+            <Link href="/contracts" className="inline-flex mt-5 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800">
+              Voltar para contratos
+            </Link>
+          </div>
         </main>
       </div>
     );
   }
 
-  // Calculate policy alerts
-  let maxDaysLate = 0;
-  installments.forEach(inst => {
-    if (inst.status !== 'paid') {
-      const due = new Date(inst.due_date);
-      const now = new Date();
-      due.setUTCHours(0, 0, 0, 0);
-      now.setUTCHours(0, 0, 0, 0);
-      
-      if (now > due) {
-        const diffTime = now.getTime() - due.getTime();
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        if (diffDays > maxDaysLate) {
-          maxDaysLate = diffDays;
-        }
-      }
-    }
-  });
+  if (loadError || !contract) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Header />
+        <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
+          <div className="bg-white rounded-xl border border-red-100 p-8 text-center shadow-sm">
+            <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+            <h1 className="text-xl font-semibold text-gray-900">
+              {loadError === 'network' ? 'Não foi possível conectar ao servidor.' : loadError === 'server' ? 'Não foi possível carregar o contrato.' : 'Contrato não encontrado.'}
+            </h1>
+            <p className="text-sm text-gray-500 mt-2">
+              {loadError === 'network' ? 'Verifique sua conexão e tente novamente.' : loadError === 'server' ? 'Tente novamente em instantes.' : 'O contrato pode ter sido removido ou você não tem acesso.'}
+            </p>
+            <Link href={`/contracts${tenantPath}`} className="inline-flex mt-5 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-800">
+              Voltar para contratos
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const maxDaysLate = financialTitles.length > 0
+    ? Math.max(...financialTitles.map((title) => title.days_overdue))
+    : 0;
 
   const isNegativeAllowed = contract?.negative_allowed ?? contract?.collection_policies?.negative_allowed;
   const daysToNegative = contract?.override_days_to_negative ?? contract?.collection_policies?.days_to_negative;
@@ -162,7 +218,7 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
       <Header />
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
         
-        <Link href="/contracts" className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-900 mb-6 transition-colors">
+        <Link href={`/contracts${tenantPath}`} className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-900 mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4 mr-1" />
           Voltar para Contratos
         </Link>
@@ -192,58 +248,73 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
             
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-6 border-b border-gray-100">
-                <h2 className="text-lg font-medium text-gray-900">Títulos Financeiros (Parcelas)</h2>
+                 <h2 className="text-lg font-medium text-gray-900">Títulos Financeiros</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm text-gray-600">
                   <thead className="bg-gray-50/50 text-gray-500 font-medium">
                     <tr>
-                      <th className="px-6 py-4">Parcela</th>
-                      <th className="px-6 py-4">Vencimento</th>
-                      <th className="px-6 py-4">Valor Original</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4 text-right">Ações</th>
+                      <th scope="col" className="px-6 py-4">Parcela</th>
+                      <th scope="col" className="px-6 py-4">Vencimento</th>
+                      <th scope="col" className="px-6 py-4">Valor Original</th>
+                      <th scope="col" className="px-6 py-4">Status</th>
+                      <th scope="col" className="px-6 py-4 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {installments.length === 0 ? (
+                    {financialTitles.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
                           Nenhum título gerado para este contrato.
                         </td>
                       </tr>
                     ) : (
-                      installments.map((inst) => (
-                        <tr key={inst.id} className="hover:bg-gray-50/50">
-                          <td className="px-6 py-4 font-medium text-gray-900">{inst.installment_number}</td>
-                          <td className="px-6 py-4">
-                            {new Date(inst.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                          </td>
-                          <td className="px-6 py-4">
-                            R$ {inst.original_value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-6 py-4">
-                            {getStatusBadge(inst.status)}
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            {(inst.status === 'late' || inst.status === 'pending') && (
-                              <button
-                                onClick={() => handleStartCollection(inst)}
-                                disabled={startingCollectionId === inst.id}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm shadow-emerald-600/20"
-                                title="Iniciar Cobrança Automática via IA"
-                              >
-                                {startingCollectionId === inst.id ? (
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Play className="w-3.5 h-3.5 fill-current" />
-                                )}
-                                Iniciar Cobrança
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))
+                        financialTitles.map((title) => {
+                          return <tr key={title.id} className="hover:bg-gray-50/50">
+                           <td className="px-6 py-4 font-medium text-gray-900">{title.installment_number}</td>
+                           <td className="px-6 py-4">
+                             {new Date(title.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                           </td>
+                           <td className="px-6 py-4">
+                             R$ {Number(title.original_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                           </td>
+                           <td className="px-6 py-4">
+                             {getStatusBadge(title.status)}
+                              {!title.eligible && <p className="mt-1 text-xs text-gray-500">{getEligibilityMessage(title.eligibility_reason)} ({title.days_overdue} dias)</p>}
+                           </td>
+                            <td className="px-6 py-4 text-right">
+                               {title.eligible && (
+                                <button
+                                  onClick={() => handleStartCollection(title)}
+                                  disabled={startingCollectionId === title.id}
+                                  aria-label={`Iniciar cobrança da parcela ${title.installment_number}`}
+                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm shadow-emerald-600/20"
+                                 title="Iniciar Cobrança Automática via IA"
+                               >
+                                  {startingCollectionId === title.id ? (
+                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                 ) : (
+                                   <Play className="w-3.5 h-3.5 fill-current" />
+                                 )}
+                                 Iniciar Cobrança
+                                </button>
+                               )}
+                               {collectionError?.titleId === title.id && (
+                                 <div role="alert" className="mt-2 max-w-xs ml-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left">
+                                   <p className="text-xs text-red-700 font-medium">{collectionError.message}</p>
+                                   {collectionError.code === 'ACTIVE_CASE_EXISTS' && (
+                                     <Link
+                                       href={`/cases${tenantPath}`}
+                                       className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-red-700 underline hover:text-red-900"
+                                     >
+                                       Acompanhar caso existente no módulo de Casos
+                                     </Link>
+                                   )}
+                                 </div>
+                               )}
+                            </td>
+                         </tr>;
+                       })
                     )}
                   </tbody>
                 </table>

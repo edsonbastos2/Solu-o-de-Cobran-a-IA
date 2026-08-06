@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { MessageCircleQuestion, X, Send, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import Markdown from 'react-markdown';
+import { fetchWithAuth } from '@/lib/api';
 
 type Message = {
   role: 'user' | 'model';
@@ -36,7 +37,7 @@ export function HelpChat() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/help-chat', {
+      const response = await fetchWithAuth('/api/help-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -44,13 +45,12 @@ export function HelpChat() {
         }),
       });
 
-      if (!response.ok) throw new Error('Erro ao enviar mensagem');
-
       const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Erro ao enviar mensagem');
       setMessages(prev => [...prev, { role: 'model', content: data.text }]);
     } catch (error) {
       console.error(error);
-      setMessages(prev => [...prev, { role: 'model', content: 'Desculpe, ocorreu um erro ao tentar processar sua mensagem. Tente novamente mais tarde.' }]);
+      setMessages(prev => [...prev, { role: 'model', content: error instanceof Error ? error.message : 'Desculpe, ocorreu um erro ao tentar processar sua mensagem.' }]);
     } finally {
       setIsLoading(false);
     }
@@ -58,17 +58,25 @@ export function HelpChat() {
 
   return (
     <>
-      {/* Botão Flutuante */}
+{/* Botão Flutuante */}
       <button
         onClick={() => setIsOpen(true)}
         className={`fixed bottom-6 right-6 p-4 rounded-full bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 transition-transform z-50 ${isOpen ? 'scale-0' : 'scale-100'}`}
-        aria-label="Ajuda do Sistema"
+        aria-label="Abrir assistente de ajuda do sistema"
+        aria-expanded={isOpen}
+        aria-controls="help-chat-window"
       >
         <MessageCircleQuestion size={28} />
       </button>
 
       {/* Janela de Chat */}
-      <div className={`fixed bottom-6 right-6 w-[340px] sm:w-[400px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden transition-all duration-300 z-50 origin-bottom-right ${isOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'}`} style={{ height: '550px', maxHeight: '85vh' }}>
+      <div
+        id="help-chat-window"
+        role="dialog"
+        aria-label="Assistente de ajuda do sistema"
+        className={`fixed bottom-6 right-6 w-[340px] sm:w-[400px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden transition-all duration-300 z-50 origin-bottom-right ${isOpen ? 'scale-100 opacity-100 pointer-events-auto' : 'scale-90 opacity-0 pointer-events-none'}`}
+        style={{ height: '550px', maxHeight: '85vh' }}
+      >
         
         {/* Header */}
         <div className="bg-emerald-600 text-white p-4 flex justify-between items-center shadow-sm">
@@ -79,13 +87,13 @@ export function HelpChat() {
               <p className="text-emerald-50 text-xs">Tire suas dúvidas</p>
             </div>
           </div>
-          <button onClick={() => setIsOpen(false)} className="text-white hover:bg-emerald-700 p-1 rounded-full transition-colors">
+          <button onClick={() => setIsOpen(false)} className="text-white hover:bg-emerald-700 p-1 rounded-full transition-colors" aria-label="Fechar ajuda do sistema">
             <X size={20} />
           </button>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-slate-50">
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-slate-50" aria-live="polite" aria-label="Mensagens do assistente">
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-br-sm' : 'bg-white border border-gray-100 shadow-sm text-gray-800 rounded-bl-sm'}`}>
@@ -118,11 +126,14 @@ export function HelpChat() {
             }}
             className="flex items-center gap-2 relative"
           >
-            <input
+            <label htmlFor="help-chat-input" className="sr-only">Digite sua dúvida</label>
+<input
+              id="help-chat-input"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Digite sua dúvida..."
+              aria-label="Digite sua dúvida para o assistente"
               className="flex-1 border border-gray-200 rounded-full pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
               disabled={isLoading}
             />
@@ -130,6 +141,7 @@ export function HelpChat() {
               type="submit"
               disabled={!input.trim() || isLoading}
               className="absolute right-1.5 p-2 bg-emerald-600 text-white rounded-full hover:bg-emerald-700 disabled:opacity-50 disabled:hover:bg-emerald-600 transition-colors"
+              aria-label="Enviar mensagem ao assistente"
             >
               <Send size={16} />
             </button>

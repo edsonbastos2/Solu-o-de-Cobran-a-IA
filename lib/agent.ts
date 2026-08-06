@@ -1,12 +1,39 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { supabase } from '@/lib/supabase';
+import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendMessage } from '@/lib/messaging';
 import { getCollectionStage } from '@/lib/finance';
-import { fetchAgents, AgentConfig } from '@/lib/multi-agent';
+import { fetchAgents } from '@/lib/multi-agent';
+import { recordAuditAction } from '@/lib/audit';
+import { CaseWithRelations } from '@/lib/types';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
+
+type ConversationMessage = {
+  role: 'user' | 'ai' | 'human' | 'system';
+  content: string;
+};
+
+type LlmMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
+
+type AiProfile = {
+  ai_provider?: string;
+  ai_model?: string;
+  opencode_api_key?: string;
+  gemini_api_key?: string;
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+  openrouter_api_key?: string;
+  ollama_base_url?: string;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -14,7 +41,7 @@ async function sleep(ms: number) {
 
 async function callLLM(
   prompt: string,
-  history: any[] | null,
+  history: ConversationMessage[] | null,
   aiProvider: string,
   aiModel: string,
   apiKey: string,
@@ -33,10 +60,10 @@ async function callLLM(
           baseURL: aiProvider === 'opencode' ? OPENCODE_BASE_URL : (aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : (aiProvider === 'ollama' ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` : undefined))
         });
 
-        let messages: any[] = [];
+        let messages: LlmMessage[] = [];
         if (history) {
           messages.push({ role: 'system', content: prompt });
-          messages = messages.concat(history.map((msg: any) => ({
+          messages = messages.concat(history.map((msg) => ({
             role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
             content: msg.content
           })));
@@ -56,11 +83,11 @@ async function callLLM(
       } else if (aiProvider === 'anthropic') {
         const anthropic = new Anthropic({ apiKey });
 
-        let messages: any[] = [];
+        let messages: Array<Exclude<LlmMessage, { role: 'system' }>> = [];
         let system = "";
         if (history) {
           system = prompt;
-          messages = history.map((msg: any) => ({
+          messages = history.map((msg) => ({
             role: (msg.role === 'ai' || msg.role === 'human') ? 'assistant' : 'user',
             content: msg.content
           }));
@@ -83,20 +110,27 @@ async function callLLM(
       }
 
       return "";
-    } catch (error: any) {
+    } catch (error: unknown) {
       attempt++;
+      const errorMessage = getErrorMessage(error);
+      const errorStatus = typeof error === 'object' && error !== null && 'status' in error
+        ? error.status
+        : undefined;
+      const errorCode = typeof error === 'object' && error !== null && 'code' in error
+        ? error.code
+        : undefined;
 
       const isTransient =
-        error.message?.includes('503') ||
-        error.message?.includes('429') ||
-        error.status === 503 ||
-        error.status === 429 ||
-        error.code === 'ECONNRESET' ||
-        error.code === 'ETIMEDOUT';
+        errorMessage.includes('503') ||
+        errorMessage.includes('429') ||
+        errorStatus === 503 ||
+        errorStatus === 429 ||
+        errorCode === 'ECONNRESET' ||
+        errorCode === 'ETIMEDOUT';
 
       if (isTransient && attempt < maxRetries) {
         const delay = Math.pow(2, attempt) * 1000;
-        console.warn(`Transient error in AI call (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms...`, error.message);
+        console.warn(`Transient error in AI call (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms...`, errorMessage);
         await sleep(delay);
         continue;
       }
@@ -108,26 +142,45 @@ async function callLLM(
   return "";
 }
 
-export async function processChat(caseId: string, message: string) {
-  if (!supabase) {
+export async function processChat(caseId: string, message: string, database?: SupabaseClient, tenantId?: string) {
+  if (!database) {
     throw new Error("Supabase não configurado.");
   }
+  if (!message.trim()) throw new Error('Mensagem vazia.');
 
-  const { data: caseData, error: caseError } = await supabase
+  let caseQuery = database
     .from('cases')
-    .select('*')
-    .eq('id', caseId)
-    .single();
+    .select(`*, financial_titles (id, contract_id, installment_number, original_value, current_value, due_date, status, contracts (id, contract_number, clients (id, name, document)))`)
+    .eq('id', caseId);
+  if (tenantId) caseQuery = caseQuery.eq('tenant_id', tenantId);
+  const { data: caseData, error: caseError } = await caseQuery.single();
 
   if (caseError || !caseData) {
     throw new Error("Caso não encontrado");
   }
+
+  const relatedCase = caseData as CaseWithRelations;
+  const resolvedTenantId = tenantId || relatedCase.tenant_id;
+  if (!resolvedTenantId) throw new Error('Tenant não encontrado para o caso.');
 
   const stage = getCollectionStage(
     caseData.due_date,
     caseData.max_discount_margin,
     caseData.status
   );
+  const financialTitle = Array.isArray(relatedCase.financial_titles)
+    ? relatedCase.financial_titles[0]
+    : relatedCase.financial_titles;
+  const relatedContract = financialTitle?.contracts;
+  const relatedClient = relatedContract?.clients;
+  const domainContext = `
+CONTEXTO CANÔNICO DA OBRIGAÇÃO:
+Cliente: ${relatedClient?.name || caseData.name}
+Documento: ${relatedClient?.document || caseData.debtor_document || 'não informado'}
+Contrato: ${relatedContract?.contract_number || 'não informado'}
+Título: ${financialTitle?.external_reference || financialTitle?.installment_number || 'legado'}
+Vencimento: ${financialTitle?.due_date || caseData.due_date}
+Status do título: ${financialTitle?.status || 'não informado'}`;
 
   let aiProvider = 'opencode';
   let aiModel = 'deepseek-v4-flash';
@@ -136,22 +189,22 @@ export async function processChat(caseId: string, message: string) {
 
   if (caseData.user_id) {
     const admin = getSupabaseAdmin();
-    let profile: any = null;
+    let profile: AiProfile | null = null;
     if (admin) {
       const { data: rpcData, error: rpcErr } = await admin
         .rpc('get_user_ai_keys', { p_user_id: caseData.user_id });
       if (!rpcErr && rpcData && rpcData.length > 0) {
-        profile = rpcData[0];
+        profile = rpcData[0] as AiProfile;
       }
     }
     if (!profile) {
-      const client = admin || supabase;
+      const client = admin || database;
       const { data } = await client!
         .from('profiles')
         .select('*')
         .eq('id', caseData.user_id)
         .single();
-      profile = data;
+       profile = data as AiProfile | null;
     }
 
     if (profile) {
@@ -179,23 +232,36 @@ export async function processChat(caseId: string, message: string) {
     throw new Error(`Chave de API não configurada para o provedor ${aiProvider}. Configure nas opções (Settings) ou nas variáveis de ambiente.`);
   }
 
-  const { data: historyData, error: historyError } = await supabase
+  let historyQuery = database
     .from('messages')
     .select('*')
-    .eq('case_id', caseId)
-    .order('created_at', { ascending: true });
+    .eq('case_id', caseId);
+  if (tenantId) historyQuery = historyQuery.eq('tenant_id', tenantId);
+  const { data: historyData, error: historyError } = await historyQuery.order('created_at', { ascending: true });
 
   if (historyError) throw historyError;
 
-  await supabase.from('messages').insert({
+  const { error: userMessageError } = await database.from('messages').insert({
+    tenant_id: resolvedTenantId,
     case_id: caseId,
     role: 'user',
-    content: message
+    content: message.trim()
+  });
+  if (userMessageError) throw userMessageError;
+
+  await recordAuditAction(database, {
+    tenantId: resolvedTenantId,
+    entityType: 'message',
+    entityId: caseId,
+    caseId,
+    actorUserId: caseData.user_id || null,
+    action: 'DEBTOR_MESSAGE_RECEIVED',
+    metadata: { role: 'user', content_length: message.trim().length },
   });
 
   const currentHistory = [...(historyData || []), { role: 'user', content: message }];
 
-  const agentsList = await fetchAgents(caseData.user_id);
+  const agentsList = await fetchAgents(caseData.user_id, database, resolvedTenantId || caseData.tenant_id);
   const activeAgents = agentsList.filter(a => a.is_active);
   const supervisor = activeAgents.find(a => a.role_type === 'supervisor');
   const qualidade = activeAgents.find(a => a.role_type === 'qualidade');
@@ -205,7 +271,7 @@ export async function processChat(caseId: string, message: string) {
   try {
     if (!supervisor || activeAgents.length <= 1) {
       aiText = await callLLM(
-        `Você é um agente de cobrança. Cliente: ${caseData.name}. Dívida: R$ ${caseData.updated_value}. Atraso: ${stage.diasAtraso} dias. Desconto Máximo: ${stage.effectiveMaxDiscount}%. Responda a mensagem.`,
+          `Você é um agente de cobrança. Cliente: ${caseData.name}. Dívida: R$ ${Number(caseData.updated_value || caseData.original_value).toFixed(2)}. Atraso: ${stage.diasAtraso} dias. Desconto Máximo: ${stage.effectiveMaxDiscount}%. ${domainContext} Responda a mensagem.`,
         currentHistory,
         aiProvider,
         aiModel,
@@ -219,9 +285,10 @@ export async function processChat(caseId: string, message: string) {
 MENSAGEM DO DEVEDOR: "${message}"
 CASO:
 Cliente: ${caseData.name}
-Valor: R$ ${caseData.updated_value.toFixed(2)}
+Valor: R$ ${Number(caseData.updated_value || caseData.original_value).toFixed(2)}
 Atraso: ${stage.diasAtraso} dias
 Desconto Máximo Permitido: ${stage.effectiveMaxDiscount}%
+${domainContext}
 
 Especialistas Disponíveis:
 ${activeAgents.filter(a => a.role_type !== 'supervisor' && a.role_type !== 'qualidade').map(a => `- ${a.name} (role: ${a.role_type}): ${a.description}`).join('\n')}
@@ -251,9 +318,10 @@ ${routing.guidance}
 
 INFORMAÇÕES DO CASO:
 Nome: ${caseData.name}
-Valor Atualizado: R$ ${caseData.updated_value.toFixed(2)}
+Valor Atualizado: R$ ${Number(caseData.updated_value || caseData.original_value).toFixed(2)}
 Atraso: ${stage.diasAtraso} dias
 Desconto Máximo Autorizado: ${stage.effectiveMaxDiscount}%
+${domainContext}
 
 Se o acordo for fechado, inclua a tag [ACORDO_FECHADO]. Se necessitar intervenção humana, inclua [HANDOFF].`;
 
@@ -283,15 +351,27 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
         }
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("AI API Error:", error);
-    throw new Error(`Erro na IA: ${error.message || String(error)}`);
+    throw new Error(`Erro na IA: ${getErrorMessage(error)}`);
   }
 
-  await supabase.from('messages').insert({
+  const { error: aiMessageError } = await database.from('messages').insert({
+    tenant_id: resolvedTenantId,
     case_id: caseId,
     role: 'ai',
     content: aiText
+  });
+  if (aiMessageError) throw aiMessageError;
+
+  await recordAuditAction(database, {
+    tenantId: resolvedTenantId,
+    entityType: 'message',
+    entityId: caseId,
+    caseId,
+    actorUserId: caseData.user_id || null,
+    action: 'AI_MESSAGE_SENT',
+    metadata: { role: 'ai', content_length: aiText.length },
   });
 
   const cleanAiText = aiText
@@ -304,9 +384,10 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
     sendMessage(destination, cleanAiText, caseData.user_id).catch(async err => {
       console.error("Error in background message send:", err);
 
-      if (supabase) {
+      if (database) {
         const provider = caseData.telegram_chat_id ? 'Telegram' : 'WhatsApp';
-        await supabase.from('messages').insert({
+        await database.from('messages').insert({
+          tenant_id: resolvedTenantId,
           case_id: caseId,
           role: 'system',
           content: `Falha ao enviar mensagem via ${provider}. Verifique suas configurações.`
@@ -321,7 +402,21 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
   if (aiText.includes('[ACORDO_FECHADO]')) newStatus = 'closed';
 
   if (newStatus !== caseData.status) {
-    await supabase.from('cases').update({ status: newStatus }).eq('id', caseId);
+    const statusQuery = database.from('cases').update({ status: newStatus }).eq('id', caseId);
+    if (tenantId) statusQuery.eq('tenant_id', tenantId);
+    const { data: updatedCase, error: statusError } = await statusQuery.select('*').single();
+    if (statusError) throw statusError;
+    await recordAuditAction(database, {
+      tenantId: resolvedTenantId,
+      entityType: 'case',
+      entityId: caseId,
+      caseId,
+      actorUserId: caseData.user_id || null,
+      action: newStatus === 'closed' ? 'CASE_CLOSED' : 'STATUS_CHANGE',
+      before: caseData,
+      after: updatedCase,
+      metadata: { source: 'ai_pipeline' },
+    });
   }
 
   return { text: aiText, newStatus, stage };

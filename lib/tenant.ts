@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 export interface TenantAccess {
   userId: string | null;
   isSuperAdmin: boolean;
+  tenantId?: string | null;
 }
 
 /**
@@ -12,26 +13,26 @@ export interface TenantAccess {
  */
 export async function getTenantAccess(requestedUserId?: string | null): Promise<TenantAccess> {
   if (!requestedUserId) {
-    return { userId: null, isSuperAdmin: false };
+    return { userId: null, isSuperAdmin: false, tenantId: null };
   }
 
   if (!supabase) {
-    return { userId: requestedUserId, isSuperAdmin: false };
+    return { userId: requestedUserId, isSuperAdmin: false, tenantId: null };
   }
 
   try {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_super_admin, email')
+      .select('is_super_admin, email, tenant_id')
       .eq('id', requestedUserId)
       .maybeSingle();
 
     if (profile) {
-      return { userId: requestedUserId, isSuperAdmin: profile.is_super_admin === true };
+      return { userId: requestedUserId, isSuperAdmin: profile.is_super_admin === true, tenantId: profile.tenant_id };
     }
   } catch (err) {
     console.error('Error checking superadmin status:', err);
   }
 
-  return { userId: requestedUserId, isSuperAdmin: false };
+  return { userId: requestedUserId, isSuperAdmin: false, tenantId: null };
 }

@@ -5,15 +5,15 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, isConfigured } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!loading && !user && pathname !== '/login') {
+    if (isConfigured && !loading && !user && pathname !== '/login') {
       router.push('/login');
     }
-  }, [user, loading, router, pathname]);
+  }, [isConfigured, user, loading, router, pathname]);
 
   if (loading) {
     return (
@@ -23,8 +23,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // If not logged in and not on login page, render nothing while redirecting
-  if (!user && pathname !== '/login') {
+  // Demo mode intentionally renders the app without an auth session.
+  if (isConfigured && !user && pathname !== '/login') {
     return null;
   }
 

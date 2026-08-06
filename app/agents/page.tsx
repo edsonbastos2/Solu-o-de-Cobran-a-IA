@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { Pagination } from '@/components/pagination';
 import { AgentConfig, DEFAULT_AGENTS } from '@/lib/multi-agent';
+import { useActiveTenant } from '@/hooks/use-active-tenant';
 
 const ROLE_OPTIONS = [
   { value: 'supervisor', label: 'Supervisor IA (Orquestrador)', color: 'bg-blue-600', icon: Shield },
@@ -58,15 +59,38 @@ const TONE_OPTIONS = [
   { value: 'negociador', label: 'Negociador e Persuasivo' }
 ];
 
-import { fetcher } from "@/lib/api";
+import { fetcher, fetchWithAuth } from "@/lib/api";
+
+interface SimulationResult {
+  supervisor: {
+    name: string;
+    reasoning: string;
+    selected_role: string;
+    guidance: string;
+  };
+  specialist: {
+    name: string;
+    role_type: string;
+    color: string;
+    icon: string;
+    draft: string;
+  };
+  quality: {
+    approved: boolean;
+    complianceScore: number;
+    feedback: string;
+  };
+  finalText: string;
+}
 
 export default function AgentsPage() {
   const { user } = useAuth();
-  
+  const { tenantQuery } = useActiveTenant();
+
   const [page, setPage] = useState(1);
   const limit = 10;
-  
-  const { data, mutate, isLoading } = useSWR(`/api/agents?page=${page}&limit=${limit}`, fetcher);
+
+  const { data, mutate, isLoading } = useSWR(`/api/agents?page=${page}&limit=${limit}${tenantQuery ? `&${tenantQuery}` : ''}`, fetcher);
 
   const agents: AgentConfig[] = data?.agents || DEFAULT_AGENTS;
 
@@ -79,7 +103,7 @@ export default function AgentsPage() {
   // Playground Simulator state
   const [simMessage, setSimMessage] = useState('Estou desempregado mas consigo R$ 1.500 à vista agora se derem um bom desconto. Quanto fica?');
   const [simulating, setSimulating] = useState(false);
-  const [simResult, setSimResult] = useState<any | null>(null);
+  const [simResult, setSimResult] = useState<SimulationResult | null>(null);
   const [simError, setSimError] = useState<string | null>(null);
   const [showTopology, setShowTopology] = useState(true);
 
@@ -116,7 +140,7 @@ export default function AgentsPage() {
     try {
       if (editingAgent.id && !editingAgent.id.startsWith('agent-')) {
         // Update existing in DB
-        const res = await fetch(`/api/agents/${editingAgent.id}`, {
+        const res = await fetchWithAuth(`/api/agents/${editingAgent.id}${tenantQuery ? `?${tenantQuery}` : ''}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(editingAgent)
@@ -127,13 +151,10 @@ export default function AgentsPage() {
         }
       } else {
         // Create new
-        const res = await fetch('/api/agents', {
+        const res = await fetchWithAuth(`/api/agents${tenantQuery ? `?${tenantQuery}` : ''}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...editingAgent,
-            user_id: user?.id
-          })
+          body: JSON.stringify(editingAgent)
         });
         if (!res.ok) {
           const err = await res.json();
@@ -144,8 +165,8 @@ export default function AgentsPage() {
       await mutate();
       setIsModalOpen(false);
       setEditingAgent(null);
-    } catch (err: any) {
-      setErrorMsg(err.message);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Erro');
     } finally {
       setSaving(false);
     }
@@ -155,7 +176,7 @@ export default function AgentsPage() {
     if (!confirm('Tem certeza que deseja remover este especialista?')) return;
     try {
       if (!id.startsWith('agent-')) {
-        await fetch(`/api/agents/${id}`, { method: 'DELETE' });
+        await fetchWithAuth(`/api/agents/${id}${tenantQuery ? `?${tenantQuery}` : ''}`, { method: 'DELETE' });
       }
       await mutate();
     } catch (err) {
@@ -166,7 +187,7 @@ export default function AgentsPage() {
   const handleResetDefaults = async () => {
     if (!confirm('Deseja restaurar a estrutura padrão de agentes especialistas?')) return;
     try {
-      await fetch('/api/agents', {
+      await fetchWithAuth(`/api/agents${tenantQuery ? `?${tenantQuery}` : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reset_defaults', userId: user?.id })
@@ -184,7 +205,7 @@ export default function AgentsPage() {
     setSimResult(null);
 
     try {
-      const res = await fetch('/api/agents/simulate', {
+      const res = await fetchWithAuth(`/api/agents/simulate${tenantQuery ? `?${tenantQuery}` : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -206,8 +227,8 @@ export default function AgentsPage() {
 
       const result = await res.json();
       setSimResult(result);
-    } catch (err: any) {
-      setSimError(err.message);
+    } catch (err: unknown) {
+      setSimError(err instanceof Error ? err.message : 'Erro');
     } finally {
       setSimulating(false);
     }
@@ -587,7 +608,7 @@ export default function AgentsPage() {
                       const sel = ROLE_OPTIONS.find(r => r.value === e.target.value);
                       setEditingAgent({
                         ...editingAgent,
-                        role_type: e.target.value as any,
+                        role_type: e.target.value as AgentConfig['role_type'],
                         color: sel?.color || 'bg-indigo-600'
                       });
                     }}
