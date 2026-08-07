@@ -1,2 +1,41 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+
+.cobrancaia-tour.driver-popover {
+  background: #111827;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  border-radius: 14px;
+  color: #e5e7eb;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.3);
+}
+
+.cobrancaia-tour .driver-popover-title {
+  color: #f9fafb;
+  font-size: 1rem;
+}
+
+.cobrancaia-tour .driver-popover-description {
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.cobrancaia-tour .driver-popover-progress-text {
+  color: #94a3b8;
+}
+
+.cobrancaia-tour .driver-popover-prev-btn,
+.cobrancaia-tour .driver-popover-next-btn {
+  border-radius: 8px;
+  text-shadow: none;
+}
+
+.cobrancaia-tour .driver-popover-next-btn {
+  background: #10b981;
+  border-color: #10b981;
+  color: #052e16;
+}
+
+.cobrancaia-tour .driver-popover-next-btn:hover {
+  background: #34d399;
+  border-color: #34d399;
+}

@@ -17,7 +17,7 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Link href="/cases" className="bg-white p-6 rounded-xl shadow-sm border border-emerald-100 hover:shadow-md transition-shadow group relative overflow-hidden">
+           <Link href="/cases" data-tour="dashboard-cases" className="bg-white p-6 rounded-xl shadow-sm border border-emerald-100 hover:shadow-md transition-shadow group relative overflow-hidden">
             <div className="flex items-center gap-4">
               <div className="p-4 bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                 <FolderKanban className="w-8 h-8" />
@@ -35,7 +35,7 @@ export default function Home() {
             </div>
           </Link>
 
-          <Link href="/contracts" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
+           <Link href="/contracts" data-tour="dashboard-contracts" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
             <div className="flex items-center gap-4">
               <div className="p-4 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
                 <FileText className="w-8 h-8" />
@@ -47,7 +47,7 @@ export default function Home() {
             </div>
           </Link>
 
-          <Link href="/clients" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
+           <Link href="/clients" data-tour="dashboard-clients" className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group">
             <div className="flex items-center gap-4">
               <div className="p-4 bg-purple-50 text-purple-600 rounded-xl group-hover:bg-purple-600 group-hover:text-white transition-colors">
                 <Users className="w-8 h-8" />

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, LogOut, Shield, Users, LayoutDashboard, Cpu, Menu, X, Settings, FolderKanban } from 'lucide-react';
+import { Bot, LogOut, Shield, Users, LayoutDashboard, Cpu, Menu, X, Settings, FolderKanban, CircleHelp } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, usePathname } from 'next/navigation';
 import { useActiveTenant } from '@/hooks/use-active-tenant';
@@ -57,6 +57,7 @@ export function Header() {
         <div className="flex items-center gap-4 sm:gap-6">
           <button
             type="button"
+            data-tour="mobile-menu-trigger"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="md:hidden p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
             aria-label="Abrir menu de navegação"
@@ -65,7 +66,7 @@ export function Header() {
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
 
-          <Link href={withTenant('/')} className="flex items-center gap-2.5 sm:gap-3 hover:opacity-80 transition-opacity">
+           <Link href={withTenant('/')} data-tour="app-logo" className="flex items-center gap-2.5 sm:gap-3 hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
               <Bot className="w-5 h-5 text-black" />
             </div>
@@ -80,6 +81,7 @@ export function Header() {
                 <Link
                   key={link.href}
                   href={withTenant(link.href)}
+                  data-tour={link.href === '/agents' ? 'agents-nav-desktop' : link.href === '/policies' ? 'policies-nav-desktop' : undefined}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                     active
                       ? 'bg-white/10 text-white'
@@ -108,7 +110,17 @@ export function Header() {
           )}
           <span className="text-slate-500 hidden lg:inline">{userName}</span>
           <div className="w-px h-5 sm:h-6 bg-white/10 hidden sm:block"></div>
-           <Link href={withTenant('/settings')} className="hover:opacity-80 transition-opacity">
+           <button
+             type="button"
+             data-tour="guided-tour-trigger"
+             onClick={() => window.dispatchEvent(new Event('cobrancaia:start-tour'))}
+             className="p-2 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+             title="Abrir tour guiado"
+             aria-label="Abrir tour guiado"
+           >
+             <CircleHelp className="w-4 h-4" />
+           </button>
+           <Link href={withTenant('/settings')} data-tour="header-settings" className="hover:opacity-80 transition-opacity">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-medium text-xs shadow-lg shrink-0">
               {getInitials(profile?.name || user?.user_metadata?.name, user?.email)}
             </div>
@@ -137,6 +149,7 @@ export function Header() {
               <Link
                 key={link.href}
                 href={withTenant(link.href)}
+                data-tour={link.href === '/agents' ? 'agents-nav-mobile' : link.href === '/policies' ? 'policies-nav-mobile' : undefined}
                 onClick={() => setMobileMenuOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   active

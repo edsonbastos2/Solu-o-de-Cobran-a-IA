@@ -60,6 +60,7 @@ export function HelpChat() {
     <>
 {/* Botão Flutuante */}
       <button
+        data-tour="help-chat"
         onClick={() => setIsOpen(true)}
         className={`fixed bottom-6 right-6 p-4 rounded-full bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 transition-transform z-50 ${isOpen ? 'scale-0' : 'scale-100'}`}
         aria-label="Abrir assistente de ajuda do sistema"

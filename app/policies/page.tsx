@@ -100,7 +100,7 @@ const handleSaveClick = async () => {
       
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
-          <div>
+           <div data-tour="policies-module">
             <h1 className="text-2xl font-bold text-gray-900 flex items-center">
               <ShieldAlert className="w-6 h-6 mr-2 text-blue-600" />
               Políticas de Cobrança

@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { GuidedTour } from '@/components/guided-tour';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading, isConfigured } = useAuth();
@@ -28,5 +29,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <GuidedTour userId={user?.id ?? null} loading={loading} isConfigured={isConfigured} />
+    </>
+  );
 }

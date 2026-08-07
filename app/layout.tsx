@@ -1,5 +1,6 @@
 import type {Metadata} from 'next';
 import './globals.css'; // Global styles
+import 'driver.js/dist/driver.css';
 import { AuthGuard } from '@/components/auth-guard';
 import { HelpChat } from '@/components/help-chat';
 

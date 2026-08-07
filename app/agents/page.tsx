@@ -246,7 +246,7 @@ export default function AgentsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
         {/* Module Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-[#111318] p-6 rounded-2xl border border-white/5">
+         <div data-tour="agents-engine" className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-[#111318] p-6 rounded-2xl border border-white/5">
           <div>
             <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">
               <Cpu className="w-4 h-4" /> Multi-Agent Orchestration Engine
@@ -280,7 +280,7 @@ export default function AgentsPage() {
         </div>
 
         {/* Visual Multi-Agent Architecture Diagram */}
-        <div className="mb-10 bg-[#111318] rounded-2xl border border-white/5 p-6 overflow-hidden">
+         <div data-tour="agents-topology" className="mb-10 bg-[#111318] rounded-2xl border border-white/5 p-6 overflow-hidden">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-amber-400" />
