@@ -268,7 +268,14 @@ BEGIN
     title_row.due_date,
     10,
     'not_started',
-    COALESCE(title_row.client_id, title_row.contract_client_id),
+    (
+      SELECT d.id
+      FROM public.debtors d
+      WHERE d.tenant_id = selected_tenant
+        AND d.document = title_row.client_document
+      ORDER BY d.created_at NULLS LAST
+      LIMIT 1
+    ),
     title_row.client_email,
     title_row.client_document,
     title_row.client_address,

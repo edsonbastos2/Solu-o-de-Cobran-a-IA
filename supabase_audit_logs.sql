@@ -27,16 +27,20 @@ CREATE POLICY "Usuários podem ver logs dos próprios casos"
 
 -- Trigger for cases table
 CREATE OR REPLACE FUNCTION public.log_case_changes()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.audit_logs (case_id, user_id, action, new_status, details)
-    VALUES (NEW.id, NEW.user_id, 'CASE_CREATED', NEW.status, 'Caso criado');
+    INSERT INTO public.audit_logs (case_id, tenant_id, user_id, action, new_status, details)
+    VALUES (NEW.id, NEW.tenant_id, NEW.user_id, 'CASE_CREATED', NEW.status, 'Caso criado');
     RETURN NEW;
   ELSIF TG_OP = 'UPDATE' THEN
     IF OLD.status IS DISTINCT FROM NEW.status THEN
-      INSERT INTO public.audit_logs (case_id, user_id, action, old_status, new_status, details)
-      VALUES (NEW.id, NEW.user_id, 'STATUS_CHANGE', OLD.status, NEW.status, 'Status alterado de ' || OLD.status || ' para ' || NEW.status);
+      INSERT INTO public.audit_logs (case_id, tenant_id, user_id, action, old_status, new_status, details)
+      VALUES (NEW.id, NEW.tenant_id, NEW.user_id, 'STATUS_CHANGE', OLD.status, NEW.status, 'Status alterado de ' || OLD.status || ' para ' || NEW.status);
     END IF;
     RETURN NEW;
   END IF;
@@ -51,12 +55,25 @@ CREATE TRIGGER on_case_change
 
 -- Trigger for messages table (Human intervention)
 CREATE OR REPLACE FUNCTION public.log_human_intervention()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  case_tenant_id UUID;
+  case_user_id UUID;
 BEGIN
   IF TG_OP = 'INSERT' AND NEW.role = 'human' THEN
-    -- Assuming case_id is present and we can fetch user_id from cases table for simplicity if not in messages
-    INSERT INTO public.audit_logs (case_id, action, details)
-    VALUES (NEW.case_id, 'HUMAN_INTERVENTION', 'Mensagem enviada por humano: ' || substring(NEW.content from 1 for 50) || '...');
+    SELECT tenant_id, user_id
+    INTO case_tenant_id, case_user_id
+    FROM public.cases
+    WHERE id = NEW.case_id;
+
+    IF case_tenant_id IS NOT NULL THEN
+      INSERT INTO public.audit_logs (case_id, tenant_id, user_id, action, details)
+      VALUES (NEW.case_id, case_tenant_id, case_user_id, 'HUMAN_INTERVENTION', 'Mensagem enviada por humano: ' || substring(NEW.content from 1 for 50) || '...');
+    END IF;
   END IF;
   RETURN NEW;
 END;

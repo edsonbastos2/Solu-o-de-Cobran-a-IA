@@ -1,7 +1,7 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
 
-const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
+const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go';
 
 const EXTRACTION_PROMPT = `You are an expert lawyer and data extraction assistant. Extract the following information from the contract provided. If a field is not found, leave it empty or null.
 
@@ -28,6 +28,8 @@ Return a JSON with the following fields:
   "forum": "Foro do contrato"
 }`;
 
+const MODEL = 'minimax-m3';
+
 export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.OPENCODE_API_KEY;
@@ -46,58 +48,66 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "contractText or file is required" }, { status: 400 });
     }
 
-    let userContent = "";
-    if (contractText) {
-      userContent = contractText;
-    }
+    const anthropic = new Anthropic({ apiKey, baseURL: OPENCODE_BASE_URL });
 
-    const openai = new OpenAI({ apiKey, baseURL: OPENCODE_BASE_URL });
+    const userText = contractText || "Extraia os dados deste contrato.";
+    const content: Anthropic.Messages.ContentBlockParam[] = [];
 
     if (file) {
       const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      const base64 = buffer.toString("base64");
-      const mimeType = file.type;
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      const mimeType = file.type || 'application/pdf';
+      const isPdf = mimeType === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-      const response = await openai.chat.completions.create({
-        model: "deepseek-v4-pro",
-        messages: [
-          { role: "system", content: EXTRACTION_PROMPT },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: userContent || "Extraia os dados deste contrato." },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${base64}`
-                }
-              }
-            ]
-          }
-        ],
-        temperature: 0,
-        max_tokens: 2048,
-        response_format: { type: "json_object" }
-      });
-
-      const result = JSON.parse(response.choices[0].message.content || "{}");
-      return NextResponse.json(result);
-    } else {
-      const response = await openai.chat.completions.create({
-        model: "deepseek-v4-pro",
-        messages: [
-          { role: "system", content: EXTRACTION_PROMPT },
-          { role: "user", content: userContent }
-        ],
-        temperature: 0,
-        max_tokens: 2048,
-        response_format: { type: "json_object" }
-      });
-
-      const result = JSON.parse(response.choices[0].message.content || "{}");
-      return NextResponse.json(result);
+      if (isPdf) {
+        content.push({
+          type: 'document',
+          title: file.name,
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: base64,
+          },
+        });
+      } else if (['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimeType)) {
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+            data: base64,
+          },
+        });
+      } else {
+        return NextResponse.json(
+          { error: "Formato de arquivo não suportado. Envie um PDF ou uma imagem JPEG, PNG, GIF ou WEBP." },
+          { status: 400 }
+        );
+      }
     }
+
+    content.push({ type: 'text', text: userText });
+
+    const response = await anthropic.messages.create({
+      model: MODEL,
+      system: EXTRACTION_PROMPT,
+      messages: [{ role: 'user', content }],
+      max_tokens: 4096,
+      temperature: 0,
+    });
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    const resultText = textBlock?.type === 'text' ? textBlock.text : '{}';
+
+    let result: any;
+    try {
+      result = JSON.parse(resultText);
+    } catch {
+      const match = resultText.match(/\{[\s\S]*\}/);
+      result = match ? JSON.parse(match[0]) : {};
+    }
+
+    return NextResponse.json(result);
   } catch (error: any) {
     console.error("Extraction error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

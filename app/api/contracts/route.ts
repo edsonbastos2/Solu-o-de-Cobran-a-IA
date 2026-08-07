@@ -186,8 +186,28 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      const { error: installmentsError } = await database.from('installments').insert(installments);
+      const { data: insertedInstallments, error: installmentsError } = await database
+        .from('installments')
+        .insert(installments)
+        .select('id, installment_number, original_value, due_date, status');
       if (installmentsError) throw installmentsError;
+
+      const financialTitles = (insertedInstallments || []).map((installment) => ({
+        tenant_id: tenantId,
+        contract_id: contractId,
+        client_id: clientId,
+        installment_number: installment.installment_number,
+        original_value: installment.original_value,
+        current_value: installment.original_value,
+        due_date: installment.due_date,
+        status: installment.status,
+        legacy_installment_id: installment.id,
+      }));
+
+      const { error: financialTitlesError } = await database
+        .from('financial_titles')
+        .insert(financialTitles);
+      if (financialTitlesError) throw financialTitlesError;
     }
 
     return NextResponse.json({ contract: { id: createdContractId }, client_id: clientId }, { status: 201 });

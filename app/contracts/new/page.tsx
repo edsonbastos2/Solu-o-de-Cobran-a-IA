@@ -57,12 +57,18 @@ export default function NewContractPage() {
         method: 'POST',
         body: formData,
       });
-      if (!res.ok) throw new Error('Extraction failed');
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Resposta inválida do servidor (${res.status}): ${responseText.slice(0, 200)}`);
+      }
+      if (!res.ok) throw new Error(data.error || data.message || 'Extraction failed');
       setExtractedData(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to extract data from contract.');
+      alert(err.message || 'Failed to extract data from contract.');
     } finally {
       setIsExtracting(false);
     }

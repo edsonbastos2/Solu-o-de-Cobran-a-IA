@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext, serverError } from '@/lib/api-auth';
 import { calculateUpdatedValue } from '@/lib/finance';
 import { CaseWithRelations, CreateCaseResult } from '@/lib/types';
+import { getSupabaseServer } from '@/lib/supabase-server';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -21,6 +22,8 @@ const CASE_SELECT = `
 
 function mapRpcError(code: string | null) {
   switch (code) {
+    case 'AUTH_REQUIRED':
+      return { status: 401, error: 'Sessão não autenticada para iniciar a cobrança.', code };
     case 'TITLE_NOT_OVERDUE':
       return { status: 400, error: 'O título ainda não está vencido. A cobrança pode ser iniciada após o vencimento.', code };
     case 'TITLE_NOT_COLLECTIBLE':
@@ -93,19 +96,24 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const tenant = await requireTenantContext(req, searchParams.get('tenant_id'));
+  const body = await req.json().catch(() => null);
+  const requestedTenantId = searchParams.get('tenant_id')
+    || (typeof body?.tenant_id === 'string' ? body.tenant_id : null);
+  const tenant = await requireTenantContext(req, requestedTenantId);
   if ('response' in tenant) return tenant.response;
 
   try {
     const { ctx } = tenant;
-    const body = await req.json().catch(() => null);
     const financialTitleId = body?.financial_title_id;
 
     if (typeof financialTitleId !== 'string' || !UUID_PATTERN.test(financialTitleId)) {
       return NextResponse.json({ error: 'financial_title_id é obrigatório e deve ser um UUID válido.', code: 'TITLE_NOT_FOUND' }, { status: 400 });
     }
 
-    const { data, error } = await ctx.supabase.rpc('create_collection_case', {
+    const rpcClient = getSupabaseServer(req);
+    if (!rpcClient) return serverError('cases POST RPC client unavailable');
+
+    const { data, error } = await rpcClient.rpc('create_collection_case', {
       p_financial_title_id: financialTitleId,
       p_tenant_id: ctx.tenantId,
     });
