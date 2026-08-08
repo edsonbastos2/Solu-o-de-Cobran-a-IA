@@ -13,6 +13,8 @@ dependencies: [4]
 O painel lateral do detalhe do caso já mostra objetivos do estágio, mas é estático. Evoluir para recomendação dinâmica ("NBA"): próxma melhor ação sugerida ao operador humano. Ex: "Devedor mencionou dificuldade temporária em 3 mensagens; sugerir parcelamento em 4x até sexta", "Acordo expira em 12h", "Estamos no 31º dia — momento ideal para subir para negocial". Diferencial de IA que todo call center moderno busca.
 
 <critical>
+- Leia o PRD e a TechSpec antes de implementar.
+- Referencie as seções relevantes da TechSpec.
 - NBA DEVE considerar: estágio atual, dias até expiração de acordo, histórico de objeções (tarefa 4), propensão (tarefa 6), regras do contrato (negativação/protesto).
 - NBA DEVE ser ação, não texto genérico ("faça X" com botão que já abre a ação).
 - Execute `npm run lint && npm run build`.

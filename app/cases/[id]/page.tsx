@@ -8,30 +8,33 @@ import { Header } from '@/components/header';
 
 import { fetcher, fetchWithAuth } from '@/lib/api';
 import { useActiveTenant } from '@/hooks/use-active-tenant';
-import { 
-  ArrowLeft, 
-  Bot, 
-  User as UserIcon, 
-  Send, 
-  Radio, 
-  CheckCircle, 
-  AlertCircle, 
-  Clock, 
-  FileText, 
-  MessageSquare, 
-  ShieldAlert, 
-  Play, 
-  RefreshCw, 
+import { useNegotiationActions } from '@/hooks/use-negotiation-actions';
+import {
+  ArrowLeft,
+  Bot,
+  User as UserIcon,
+  Send,
+  Radio,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  FileText,
+  MessageSquare,
+  ShieldAlert,
+  Play,
+  RefreshCw,
   Download,
   Phone,
   Mail,
   MapPin,
   Sparkles,
-  Layers
+  Layers,
+  Handshake
 } from 'lucide-react';
-import { AuditLog, Case, CaseDetailsResponse, Client, ContractWithClient, FinancialTitle, Message } from '@/lib/types';
-import { formatPhoneInput } from '@/lib/utils';
+import { AuditLog, Case, CaseDetailsResponse, Client, ContractWithClient, FinancialTitle, Message, NegotiationWithRelations, NegotiationsListResponse } from '@/lib/types';
+import { formatPhoneInput, formatCurrency } from '@/lib/utils';
 import { generateCaseDossier, CollectionStageInfo } from '@/lib/finance';
+import { NegotiationStatusBadge } from '@/components/negotiations/negotiation-status-badge';
 
 function ObligationContextCard({
   caseData,
@@ -127,6 +130,105 @@ function AuditActivityCard({ auditLogs }: { auditLogs: AuditLog[] }) {
             <li key={log.id} className="border-l-2 border-emerald-200 pl-3">
               <p className="text-xs font-semibold text-slate-800">{log.action}</p>
               <p className="text-[11px] text-slate-500">{log.details || 'Ação registrada'} · {new Date(log.created_at).toLocaleString('pt-BR')}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export interface AgreementsSectionProps {
+  caseId: string;
+  tenantId: string | null;
+  canFetch: boolean;
+}
+
+function AgreementsSection({ caseId, tenantId, canFetch }: AgreementsSectionProps) {
+  const queryUrl = useMemo(() => {
+    if (!caseId) return null;
+    const params = new URLSearchParams();
+    params.set('case_id', caseId);
+    params.set('limit', '50');
+    if (tenantId) params.set('tenant_id', tenantId);
+    return `/api/negotiations?${params.toString()}`;
+  }, [caseId, tenantId]);
+  const { data, error, isLoading, mutate } = useSWR<NegotiationsListResponse>(
+    canFetch ? queryUrl : null,
+    fetcher
+  );
+  const { updatingId, handleTransition } = useNegotiationActions(tenantId, () => mutate());
+
+  const negotiations: NegotiationWithRelations[] = data?.negotiations || [];
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <Handshake className="w-4 h-4 text-emerald-600" />
+          Acordos deste caso
+        </h3>
+        {isLoading && <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />}
+      </div>
+
+      {error ? (
+        <p className="text-xs text-red-600">Não foi possível carregar os acordos. {error instanceof Error ? error.message : ''}</p>
+      ) : isLoading && negotiations.length === 0 ? (
+        <p className="text-xs text-slate-500">Carregando acordos...</p>
+      ) : negotiations.length === 0 ? (
+        <p className="text-xs text-slate-500">Nenhum acordo registrado para este caso ainda.</p>
+      ) : (
+        <ul className="space-y-3">
+          {negotiations.map((n) => (
+            <li key={n.id} className="border border-slate-100 rounded-xl p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <NegotiationStatusBadge status={n.status} />
+                <span className="text-xs text-slate-400">
+                  Criado em {new Date(n.created_at).toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="text-xs text-slate-400 block">Valor acordado</span>
+                  <span className="font-semibold text-slate-900">
+                    {n.agreed_value != null ? formatCurrency(n.agreed_value) : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block">Parcelas</span>
+                  <span className="font-semibold text-slate-900">{n.installment_count ? `${n.installment_count}x` : '—'}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block">Desconto</span>
+                  <span className="font-semibold text-slate-900">{n.discount_percent != null ? `${n.discount_percent}%` : '—'}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block">Expira em</span>
+                  <span className="font-semibold text-slate-900">{n.expires_at ? new Date(n.expires_at).toLocaleDateString('pt-BR') : '—'}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {n.status === 'open' && (
+                  <button
+                    onClick={() => handleTransition(n.id, 'accept')}
+                    disabled={updatingId === n.id}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition-colors border border-emerald-200/80"
+                  >
+                    {updatingId === n.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Handshake className="w-3.5 h-3.5" />}
+                    Aceitar
+                  </button>
+                )}
+                {n.status === 'accepted' && (
+                  <button
+                    onClick={() => handleTransition(n.id, 'fulfill')}
+                    disabled={updatingId === n.id}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-teal-50 text-teal-700 hover:bg-teal-100 rounded-lg text-xs font-semibold transition-colors border border-teal-200/80"
+                  >
+                    {updatingId === n.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                    Marcar Cumprido
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>
@@ -741,8 +843,12 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
               </div>
             )}
 
-            <AuditActivityCard auditLogs={auditLogs} />
+<AuditActivityCard auditLogs={auditLogs} />
           </div>
+        </div>
+
+        <div className="mt-6">
+          <AgreementsSection caseId={caseId} tenantId={tenantId} canFetch={canFetch} />
         </div>
       </main>
     </div>

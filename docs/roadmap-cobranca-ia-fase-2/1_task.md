@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Corrigir dashboard de métricas (legacy status)
 type: api
 complexity: medium
@@ -13,6 +13,8 @@ dependencies: []
 O `GET /api/dashboard/metrics` referencia status legados (`in_progress`/`paid`/`agreed`) que **não existem** no enum real de `cases` (`not_started`/`in_negotiation`/`needs_attention`/`closed`), fazendo as métricas retornarem sempre zeradas. Reescrever o endpoint cruzando os status reais, `financial_titles.status` e (assim que existir) `negotiations`, com funil de cobrança e aging por bucket.
 
 <critical>
+- Leia o PRD e a TechSpec antes de implementar.
+- Referencie as seções relevantes da TechSpec.
 - Use `requireTenantContext` para isolar por tenant.
 - Nunca consulte `installments.status` como fonte de verdade — use `financial_titles.status`.
 - KPIs devem refletir o funil: preventiva → amigável → negocial → especializada → acordo → quitado.

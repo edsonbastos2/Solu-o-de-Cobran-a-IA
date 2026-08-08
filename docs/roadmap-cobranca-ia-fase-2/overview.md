@@ -2,6 +2,12 @@
 
 Roadmap de evolução do sistema de cobrança guiado por IA, baseado em inventário completo do estado atual (Fase 1) e pesquisa de tendências da indústria (Experian, Gartner, McKinsey) sobre AI em debt collection.
 
+## Documentos
+
+- [PRD](prd.md) — Documento de Requisitos do Produto (visão, objetivos, histórias, funcionalidades, UX, métricas, riscos).
+- [TechSpec](techspec.md) — Especificação Técnica (arquitetura, design, interfaces, modelos, endpoints, testes, sequenciamento).
+- [tasks.md](tasks.md) — Índice das 22 tarefas ordenadas por valor ÷ esforço.
+
 ## Contexto
 
 A Fase 1 entregou um núcleo funcional: extração de contrato por IA, títulos financeiros com elegibilidade, casos de cobrança com pipeline multi-agente (Supervisor → Especialista → Qualidade CDC), mensageria WhatsApp/Telegram bidirecional, multi-tenant com RLS, estágios de cobrança com limite de desconto por aging, auditoria e Realtime.

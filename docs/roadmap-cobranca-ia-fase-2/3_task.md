@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Baixa de títulos e gestão de pagamentos
 type: api
 complexity: medium
@@ -13,6 +13,8 @@ dependencies: [1]
 `financial_titles.status` e `paid_at` existem mas ninguém atualiza. Criar endpoint de baixa (quitado/parcial/cancelado) com auditoria, UI de gestão de pagamentos no contrato, e fundamento para conciliação futura (retorno CNAB/PIX). Sem isso, todo o cálculo de `recovered_amount` e `success_rate` é manual.
 
 <critical>
+- Leia o PRD e a TechSpec antes de implementar.
+- Referencie as seções relevantes da TechSpec.
 - Toda baixa DEVE validar que o título pertence ao tenant do operador.
 - Baixa parcial DEVE recalcular `current_value` e manter `status='partial'`.
 - Toda mutação DEVE registrar `audit_logs`.

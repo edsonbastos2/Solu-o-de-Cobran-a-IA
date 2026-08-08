@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, LogOut, Shield, Users, LayoutDashboard, Cpu, Menu, X, Settings, FolderKanban, CircleHelp } from 'lucide-react';
+import { Bot, LogOut, Shield, Users, LayoutDashboard, Cpu, Menu, X, Settings, FolderKanban, CircleHelp, Handshake } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter, usePathname } from 'next/navigation';
 import { useActiveTenant } from '@/hooks/use-active-tenant';
@@ -40,6 +40,7 @@ export function Header() {
   const navLinks = [
     { href: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     { href: '/cases', label: 'Casos (Ao Vivo)', icon: FolderKanban, exact: false },
+    { href: '/negotiations', label: 'Acordos', icon: Handshake, exact: false },
     { href: '/contracts', label: 'Contratos', icon: Bot, exact: false },
     { href: '/clients', label: 'Clientes', icon: Users, exact: false },
     { href: '/agents', label: 'Agentes IA', icon: Cpu, exact: false },

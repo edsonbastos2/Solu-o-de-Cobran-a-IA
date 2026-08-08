@@ -182,10 +182,20 @@ export interface FinancialTitle {
   due_date: string;
   status: string;
   paid_at?: string;
+  paid_amount?: number;
   legacy_installment_id?: string;
   metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export type FinancialTitleStatus = 'open' | 'partial' | 'paid' | 'cancelled';
+
+export interface FinancialTitlePatch {
+  status?: FinancialTitleStatus;
+  paid_at?: string;
+  paid_amount?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface FinancialTitleWithEligibility extends FinancialTitle {
@@ -204,6 +214,35 @@ export interface FinancialTitlesResponse {
 
 export interface CaseWithRelations extends Case {
   financial_titles?: FinancialTitleWithRelations | FinancialTitleWithRelations[] | null;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard metrics (Roadmap Fase 2 — Techspec "Interfaces Principais", Grupo A)
+// ---------------------------------------------------------------------------
+
+/** Estágio do funil de cobrança (espelha CollectionStageInfo['id'] de lib/finance). */
+export type CollectionStage = import('@/lib/finance').CollectionStageInfo['id'];
+
+export interface DashboardMetrics {
+  total_cases: number;
+  /** Casos não encerrados: not_started | in_negotiation | needs_attention. */
+  active_cases: number;
+  /** Soma de financial_titles.current_value onde status='paid' E paid_at IS NOT NULL. */
+  recovered_amount: number;
+  /** Soma do valor atualizado dos casos ativos (não closed). */
+  pending_amount: number;
+  /** Placeholder: closed / total * 100 — será enriquecido por negotiations (task 2). */
+  success_rate: number;
+  aging_buckets: { bucket: string; count: number; amount: number }[];
+  stage_distribution: { stage: CollectionStage; count: number; amount: number }[];
+  channel_distribution: { channel: string; count: number }[];
+  avg_resolution_days: number;
+  payment_status_pie: { name: string; value: number }[];
+  contracts_by_month_bar: { month: string; count: number }[];
+  /** @deprecated Compatibilidade com components/dashboard-charts.tsx — usar payment_status_pie. */
+  paymentStatus: { name: string; value: number }[];
+  /** @deprecated Compatibilidade com components/dashboard-charts.tsx — usar contracts_by_month_bar. */
+  contractsByMonth: { name: string; Novas: number }[];
 }
 
 export interface CasesListResponse {
@@ -282,25 +321,39 @@ export interface Campaign {
   updated_at: string;
 }
 
+export type NegotiationStatus = 'open' | 'accepted' | 'expired' | 'fulfilled' | 'defaulted';
+
 export interface Negotiation {
   id: string;
   tenant_id: string;
-  client_id?: string;
-  contract_id?: string;
-  financial_title_id?: string;
-  case_id?: string;
-  status: string;
-  original_value?: number;
-  proposed_value?: number;
-  agreed_value?: number;
-  discount_percent?: number;
-  installment_count?: number;
-  expires_at?: string;
-  accepted_at?: string;
+  client_id: string | null;
+  contract_id: string | null;
+  financial_title_id: string | null;
+  case_id: string | null;
+  status: NegotiationStatus;
+  original_value: number | null;
+  proposed_value: number | null;
+  agreed_value: number | null;
+  discount_percent: number | null;
+  installment_count: number | null;
+  expires_at: string | null;
+  accepted_at: string | null;
   metadata: Record<string, unknown>;
-  created_by?: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface NegotiationWithRelations extends Negotiation {
+  clients?: Pick<Client, 'id' | 'name' | 'document'> | null;
+  cases?: Pick<Case, 'id' | 'name' | 'status'> | null;
+}
+
+export interface NegotiationsListResponse {
+  negotiations: NegotiationWithRelations[];
+  total: number;
+  totalPages: number;
+  page: number;
 }
 
 export interface LegalProcess {

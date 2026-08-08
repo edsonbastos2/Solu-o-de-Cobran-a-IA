@@ -1,14 +1,18 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useMemo, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import useSWR from 'swr';
 import { Header } from '@/components/header';
-import { ArrowLeft, FileText, CheckCircle, Clock, AlertCircle, Play, RefreshCw } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle, CircleDollarSign, XCircle, AlertCircle, Play, RefreshCw } from 'lucide-react';
 import { Client, ContractWithClient, FinancialTitleWithEligibility, FinancialTitlesResponse } from '@/lib/types';
-import { formatPhoneInput } from '@/lib/utils';
-import { fetchWithAuth } from '@/lib/api';
+import { formatPhoneInput, formatCurrency } from '@/lib/utils';
+import { fetcher, fetchWithAuth } from '@/lib/api';
 import { useActiveTenant } from '@/hooks/use-active-tenant';
+import { useTitleBaixaActions } from '@/hooks/use-title-baixa';
+import { TitleStatusBadge } from '@/components/financial-titles/title-status-badge';
+import { PartialPaymentModal } from '@/components/financial-titles/partial-payment-modal';
 
 type ContractLoadError = 'not_found' | 'network' | 'server';
 
@@ -26,22 +30,48 @@ const CASE_CREATION_ERROR_MESSAGES: Record<string, string> = {
   TENANT_REQUIRED: 'Selecione um tenant ativo antes de iniciar a cobrança.',
 };
 
+const CLOSED_STATUSES = ['paid', 'settled', 'recovered', 'cancelled', 'canceled'];
+
+function isClosedTitle(status: string): boolean {
+  return CLOSED_STATUSES.includes(status.toLowerCase());
+}
+
 export default function ContractDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const unwrappedParams = use(params);
   const contractId = unwrappedParams.id;
   const { user, authLoading, tenantId, tenantQuery, tenantPath, needsTenantSelection } = useActiveTenant();
-  
+
   const [contract, setContract] = useState<ContractWithClient | null>(null);
   const [client, setClient] = useState<Client | null>(null);
-  const [financialTitles, setFinancialTitles] = useState<FinancialTitleWithEligibility[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<ContractLoadError | null>(null);
   const [startingCollectionId, setStartingCollectionId] = useState<string | null>(null);
   const [collectionError, setCollectionError] = useState<CollectionError | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [partialTitle, setPartialTitle] = useState<FinancialTitleWithEligibility | null>(null);
+
+  const canFetchTitles = !authLoading && Boolean(user) && !needsTenantSelection && Boolean(contractId);
+  const titlesUrl = canFetchTitles
+    ? `/api/financial-titles?contract_id=${encodeURIComponent(contractId)}${tenantQuery ? `&${tenantQuery}` : ''}`
+    : null;
+  const {
+    data: titlesData,
+    error: titlesError,
+    isLoading: titlesLoading,
+    mutate: mutateTitles,
+  } = useSWR<FinancialTitlesResponse>(titlesUrl, fetcher);
+
+  const { busyId, bulkBusy, baixaTotal, baixaParcial, cancelar, baixaTotalEmMassa } =
+    useTitleBaixaActions(tenantId, () => mutateTitles());
+
+  const financialTitles: FinancialTitleWithEligibility[] = useMemo(
+    () => titlesData?.financial_titles || [],
+    [titlesData]
+  );
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchContract = async () => {
       if (authLoading) return;
       if (!user || needsTenantSelection) {
         setLoading(false);
@@ -53,14 +83,9 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
         const contractResponse = await fetchWithAuth(`/api/contracts/${contractId}${tenantPath}`);
         const contractData = await contractResponse.json() as { contract?: ContractWithClient; error?: string };
         if (!contractResponse.ok) {
-          if (contractResponse.status === 404) {
-            setLoadError('not_found');
-          } else {
-            setLoadError('server');
-          }
+          setLoadError(contractResponse.status === 404 ? 'not_found' : 'server');
           return;
         }
-
         const typedContract = contractData.contract;
         if (!typedContract) {
           setLoadError('server');
@@ -68,15 +93,6 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
         }
         setContract(typedContract);
         setClient(typedContract.clients ?? null);
-
-        const titlesResponse = await fetchWithAuth(`/api/financial-titles?contract_id=${encodeURIComponent(contractId)}${tenantQuery ? `&${tenantQuery}` : ''}`);
-        const titlesData = await titlesResponse.json() as FinancialTitlesResponse & { error?: string };
-        if (!titlesResponse.ok) {
-          setLoadError(titlesResponse.status === 404 ? 'not_found' : 'server');
-          return;
-        }
-        setFinancialTitles(titlesData.financial_titles);
-        
       } catch (err) {
         console.error(err);
         setLoadError(err instanceof TypeError ? 'network' : 'server');
@@ -85,8 +101,23 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
       }
     };
 
-    fetchData();
-  }, [authLoading, contractId, needsTenantSelection, tenantPath, tenantQuery, user]);
+    fetchContract();
+  }, [authLoading, contractId, needsTenantSelection, tenantPath, user]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => financialTitles.some((title) => title.id === id)));
+  }, [financialTitles]);
+
+  const selectableTitles = financialTitles.filter((title) => !isClosedTitle(title.status));
+  const allSelected = selectableTitles.length > 0 && selectableTitles.every((title) => selectedIds.includes(title.id));
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? [] : selectableTitles.map((title) => title.id));
+  };
 
   const handleStartCollection = async (title: FinancialTitleWithEligibility) => {
     if (!client || !contract) return;
@@ -114,8 +145,7 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
         return;
       }
 
-      // Redirect to the new case
-       router.push(`/cases/${data.case.id}${tenantPath}`);
+      router.push(`/cases/${data.case.id}${tenantPath}`);
     } catch (err: unknown) {
       console.error(err);
       setCollectionError({
@@ -127,22 +157,24 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
     }
   };
 
+  const handleCancelTitle = (title: FinancialTitleWithEligibility) => {
+    if (window.confirm('Cancelar este título financeiro? Esta ação não pode ser desfeita.')) {
+      void cancelar(title.id);
+    }
+  };
+
+  const handleBulkBaixa = () => {
+    if (selectedIds.length === 0) return;
+    void baixaTotalEmMassa(selectedIds);
+    setSelectedIds([]);
+  };
+
   const getEligibilityMessage = (reason: FinancialTitleWithEligibility['eligibility_reason']) => {
     if (reason === 'future') return 'Este título ainda não venceu. Revise o vencimento antes de iniciar a cobrança.';
     if (reason === 'today') return 'Este título vence hoje e só poderá gerar cobrança a partir de amanhã.';
-    if (reason === 'paid') return 'Este título já foi pago e não pode gerar um caso.';
+    if (reason === 'paid') return 'Este título já foi pago ou está quitado e não pode gerar um caso.';
     if (reason === 'cancelled') return 'Este título foi cancelado e não pode gerar um caso.';
     return 'Este título não está elegível para cobrança.';
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch(status) {
-      case 'paid': case 'settled': case 'recovered': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20"><CheckCircle className="w-3 h-3 mr-1"/> Pago</span>;
-      case 'late': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/10"><AlertCircle className="w-3 h-3 mr-1"/> Atrasado</span>;
-      case 'cancelled': case 'canceled': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-600 ring-1 ring-inset ring-gray-500/10">Cancelado</span>;
-      case 'in_negotiation': return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10"><Clock className="w-3 h-3 mr-1"/> Em Acordo</span>;
-      default: return <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-50 text-gray-600 ring-1 ring-inset ring-gray-500/10">Pendente</span>;
-    }
   };
 
   if (authLoading || loading) {
@@ -217,7 +249,7 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header />
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
-        
+
         <Link href={`/contracts${tenantPath}`} className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-900 mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4 mr-1" />
           Voltar para Contratos
@@ -245,76 +277,176 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
-            
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-6 border-b border-gray-100">
-                 <h2 className="text-lg font-medium text-gray-900">Títulos Financeiros</h2>
+              <div className="p-6 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-lg font-medium text-gray-900">Títulos Financeiros</h2>
+                {financialTitles.length > 0 && (
+                  <button
+                    onClick={handleBulkBaixa}
+                    disabled={bulkBusy || selectedIds.length === 0}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm shadow-emerald-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {bulkBusy ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <CircleDollarSign className="w-3.5 h-3.5" />
+                    )}
+                    Baixa total dos selecionados ({selectedIds.length})
+                  </button>
+                )}
               </div>
+
+              {titlesError && (
+                <div className="px-6 py-4 border-b border-red-100 bg-red-50 text-sm text-red-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>Não foi possível carregar os títulos financeiros. {titlesError instanceof Error ? titlesError.message : ''}</span>
+                </div>
+              )}
+
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-gray-600">
+                <table className="w-full min-w-[760px] text-left text-sm text-gray-600">
                   <thead className="bg-gray-50/50 text-gray-500 font-medium">
                     <tr>
+                      <th scope="col" className="px-6 py-4 w-12">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          disabled={selectableTitles.length === 0}
+                          onChange={toggleSelectAll}
+                          aria-label="Selecionar todos os títulos disponíveis"
+                          className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                      </th>
                       <th scope="col" className="px-6 py-4">Parcela</th>
                       <th scope="col" className="px-6 py-4">Vencimento</th>
                       <th scope="col" className="px-6 py-4">Valor Original</th>
+                      <th scope="col" className="px-6 py-4">Saldo</th>
                       <th scope="col" className="px-6 py-4">Status</th>
                       <th scope="col" className="px-6 py-4 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {financialTitles.length === 0 ? (
+                    {titlesLoading && financialTitles.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                        <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                          Carregando títulos financeiros...
+                        </td>
+                      </tr>
+                    ) : financialTitles.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
                           Nenhum título gerado para este contrato.
                         </td>
                       </tr>
                     ) : (
-                        financialTitles.map((title) => {
-                          return <tr key={title.id} className="hover:bg-gray-50/50">
-                           <td className="px-6 py-4 font-medium text-gray-900">{title.installment_number}</td>
-                           <td className="px-6 py-4">
-                             {new Date(title.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
-                           </td>
-                           <td className="px-6 py-4">
-                             R$ {Number(title.original_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                           </td>
-                           <td className="px-6 py-4">
-                             {getStatusBadge(title.status)}
-                              {!title.eligible && <p className="mt-1 text-xs text-gray-500">{getEligibilityMessage(title.eligibility_reason)} ({title.days_overdue} dias)</p>}
-                           </td>
-                            <td className="px-6 py-4 text-right">
-                               {title.eligible && (
-                                <button
-                                  onClick={() => handleStartCollection(title)}
-                                  disabled={startingCollectionId === title.id}
-                                  aria-label={`Iniciar cobrança da parcela ${title.installment_number}`}
-                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm shadow-emerald-600/20"
-                                 title="Iniciar Cobrança Automática via IA"
-                               >
-                                  {startingCollectionId === title.id ? (
-                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                 ) : (
-                                   <Play className="w-3.5 h-3.5 fill-current" />
-                                 )}
-                                 Iniciar Cobrança
-                                </button>
-                               )}
-                               {collectionError?.titleId === title.id && (
-                                 <div role="alert" className="mt-2 max-w-xs ml-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left">
-                                   <p className="text-xs text-red-700 font-medium">{collectionError.message}</p>
-                                   {collectionError.code === 'ACTIVE_CASE_EXISTS' && (
-                                     <Link
-                                       href={`/cases${tenantPath}`}
-                                       className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-red-700 underline hover:text-red-900"
-                                     >
-                                       Acompanhar caso existente no módulo de Casos
-                                     </Link>
-                                   )}
-                                 </div>
-                               )}
+                      financialTitles.map((title) => {
+                        const closed = isClosedTitle(title.status);
+                        const remaining = title.current_value != null ? Number(title.current_value) : Number(title.original_value);
+                        const busy = busyId === title.id;
+                        return (
+                          <tr key={title.id} className="hover:bg-gray-50/50">
+                            <td className="px-6 py-4">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(title.id)}
+                                disabled={closed}
+                                onChange={() => toggleSelect(title.id)}
+                                aria-label={`Selecionar parcela ${title.installment_number}`}
+                                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-40"
+                              />
                             </td>
-                         </tr>;
-                       })
+                            <td className="px-6 py-4 font-medium text-gray-900">{title.installment_number}</td>
+                            <td className="px-6 py-4">
+                              {new Date(title.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                            </td>
+                            <td className="px-6 py-4">{formatCurrency(Number(title.original_value))}</td>
+                            <td className="px-6 py-4">
+                              <span className={closed ? 'text-gray-400' : 'font-medium text-gray-900'}>{formatCurrency(remaining)}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <TitleStatusBadge status={title.status} />
+                              {title.paid_at && (
+                                <p className="mt-1 text-xs text-gray-500">Pago em {new Date(title.paid_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</p>
+                              )}
+                              {!title.eligible && !closed && (
+                                <p className="mt-1 text-xs text-gray-500">{getEligibilityMessage(title.eligibility_reason)} ({title.days_overdue} dias)</p>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                {!closed && (
+                                  <>
+                                    <button
+                                      onClick={() => void baixaTotal(title.id)}
+                                      disabled={busy}
+                                      aria-label={`Baixa total da parcela ${title.installment_number}`}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                                      title="Baixa total"
+                                    >
+                                      {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CircleDollarSign className="w-3.5 h-3.5" />}
+                                      <span className="hidden md:inline">Baixa total</span>
+                                      <span className="md:hidden">Pagar</span>
+                                    </button>
+                                    <button
+                                      onClick={() => setPartialTitle(title)}
+                                      disabled={busy}
+                                      aria-label={`Baixa parcial da parcela ${title.installment_number}`}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                                      title="Baixa parcial"
+                                    >
+                                      {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                                      <span className="hidden md:inline">Parcial</span>
+                                      <span className="md:hidden">Parcial</span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleCancelTitle(title)}
+                                      disabled={busy}
+                                      aria-label={`Cancelar parcela ${title.installment_number}`}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-50 hover:bg-red-50 text-gray-600 hover:text-red-600 border border-gray-200 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                                      title="Cancelar título"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5" />
+                                      <span className="hidden md:inline">Cancelar</span>
+                                      <span className="md:hidden">Canc.</span>
+                                    </button>
+                                  </>
+                                )}
+                                {title.eligible && (
+                                  <button
+                                    onClick={() => handleStartCollection(title)}
+                                    disabled={startingCollectionId === title.id || busy}
+                                    aria-label={`Iniciar cobrança da parcela ${title.installment_number}`}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm shadow-emerald-600/20 disabled:opacity-50"
+                                    title="Iniciar Cobrança Automática via IA"
+                                  >
+                                    {startingCollectionId === title.id ? (
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Play className="w-3.5 h-3.5 fill-current" />
+                                    )}
+                                    <span className="hidden md:inline">Iniciar Cobrança</span>
+                                    <span className="md:hidden">Cobrança</span>
+                                  </button>
+                                )}
+                              </div>
+                              {collectionError?.titleId === title.id && (
+                                <div role="alert" className="mt-2 max-w-xs ml-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left">
+                                  <p className="text-xs text-red-700 font-medium">{collectionError.message}</p>
+                                  {collectionError.code === 'ACTIVE_CASE_EXISTS' && (
+                                    <Link
+                                      href={`/cases${tenantPath}`}
+                                      className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-red-700 underline hover:text-red-900"
+                                    >
+                                      Acompanhar caso existente no módulo de Casos
+                                    </Link>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -325,10 +457,10 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
 
           {/* Sidebar */}
           <div className="space-y-6">
-            
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Regras de Cobrança</h3>
-              
+
               {contract.collection_policies && (
                 <div className="mb-4 pb-4 border-b border-gray-100">
                   <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded-md">
@@ -356,7 +488,7 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
                     {contract.monetary_correction_index || contract.collection_policies?.monetary_correction_index || '-'}
                   </span>
                 </li>
-                
+
                 <li className="flex flex-col gap-1 mt-4 pt-4 border-t border-gray-50">
                   <div className="flex justify-between">
                     <span className="text-gray-500">Negativação Permitida</span>
@@ -423,6 +555,17 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
         </div>
 
       </main>
+
+      <PartialPaymentModal
+        title={partialTitle}
+        busy={partialTitle ? busyId === partialTitle.id : false}
+        onConfirm={async (amount) => {
+          if (!partialTitle) return;
+          const ok = await baixaParcial(partialTitle.id, amount);
+          if (ok) setPartialTitle(null);
+        }}
+        onClose={() => setPartialTitle(null)}
+      />
     </div>
   );
 }

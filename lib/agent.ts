@@ -35,6 +35,113 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+const AGREEMENT_AMOUNT_RE = /\bR\$\s*[\d]{1,3}(?:\.[\d]{3})*(?:,[\d]{2})?\b/gi;
+const DISCOUNT_RE = /(\d+(?:[.,]\d+)?)\s*%/g;
+const INSTALLMENT_RE = /(\d+)\s*(?:x|vezes?|parcelas?)\b/gi;
+
+/**
+ * Converte um valor monetário em formato pt-BR (ex: "R$ 1.234,56") para número.
+ * Retorna null quando não há fração monetária válida.
+ */
+function parseBRLAmount(raw: string): number | null {
+  const cleaned = raw.replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
+  const value = Number.parseFloat(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
+function clampPercent(value: number | null): number | null {
+  if (value === null) return null;
+  return Math.min(100, Math.max(0, Math.round(value * 100) / 100));
+}
+
+/** Extrai prazo de expiração da resposta da IA ("até 15/08/2026" ou "até 15/08"). */
+function parseDeadline(content: string): string | null {
+  const match = content.match(/(?:at[ée]|venc(?:e|endo em))\s+(?:dia\s+)?(\d{1,2})\s*[\/-]\s*(\d{1,2})(?:\s*[\/-]\s*(\d{2,4}))?/i);
+  if (!match) return null;
+  const day = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const yearRaw = match[3] ? Number.parseInt(match[3], 10) : new Date().getFullYear();
+  const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (isNaN(date.getTime())) return null;
+  date.setUTCHours(23, 59, 59, 999);
+  return date.toISOString();
+}
+
+export interface ParsedAgreement {
+  originalValue: number | null;
+  proposedValue: number | null;
+  agreedValue: number | null;
+  discountPercent: number | null;
+  installmentCount: number | null;
+  expiresAt: string | null;
+}
+
+/**
+ * Extrai os termos do acordo (valor, parcelas, desconto, prazo) da resposta
+ * gerada pela IA quando a tag [ACORDO_FECHADO] está presente.
+ */
+export function parseAgreement(content: string): ParsedAgreement {
+  const amounts = Array.from(content.matchAll(AGREEMENT_AMOUNT_RE)).map((m) => ({
+    value: parseBRLAmount(m[0]),
+    index: m.index ?? -1,
+  }));
+
+  const lastAgreementKeyword = Math.max(
+    content.toLowerCase().lastIndexOf('acordo'),
+    content.toLowerCase().lastIndexOf('fech'),
+    content.toLowerCase().lastIndexOf('pagamento')
+  );
+
+  let agreedValue: number | null = null;
+  if (amounts.length > 0) {
+    const candidate =
+      lastAgreementKeyword >= 0
+        ? amounts.filter((a) => a.index >= lastAgreementKeyword).pop() ?? amounts[amounts.length - 1]
+        : amounts[amounts.length - 1];
+    agreedValue = candidate.value;
+  }
+
+  let originalValue: number | null = null;
+  let proposedValue: number | null = null;
+  const lower = content.toLowerCase();
+  for (const { value, index } of amounts) {
+    const windowStart = Math.max(0, index - 30);
+    const window = lower.slice(windowStart, index);
+    if (/original|valor\s+(?:total|inicial)/.test(window)) originalValue = value;
+    if (/propost|proposta|sugerid/.test(window)) proposedValue = value;
+  }
+  if (originalValue === null && amounts[0]) originalValue = amounts[0].value;
+  if (proposedValue !== null && agreedValue === proposedValue) proposedValue = null;
+
+  let discountPercent: number | null = null;
+  for (const match of content.matchAll(DISCOUNT_RE)) {
+    const candidate = Number.parseFloat(match[1].replace(',', '.'));
+    if (Number.isFinite(candidate)) {
+      discountPercent = clampPercent(candidate);
+      break;
+    }
+  }
+
+  let installmentCount: number | null = null;
+  for (const match of content.matchAll(INSTALLMENT_RE)) {
+    const parsed = Number.parseInt(match[1], 10);
+    if (Number.isFinite(parsed) && parsed > 1) {
+      installmentCount = parsed;
+      break;
+    }
+  }
+
+  return {
+    originalValue,
+    proposedValue,
+    agreedValue,
+    discountPercent,
+    installmentCount,
+    expiresAt: parseDeadline(content),
+  };
+}
+
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -400,6 +507,70 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
   if (newStatus === 'not_started') newStatus = 'in_negotiation';
   if (aiText.includes('[HANDOFF]') || stage.id === 'especializada') newStatus = 'needs_attention';
   if (aiText.includes('[ACORDO_FECHADO]')) newStatus = 'closed';
+
+  // Persiste o acordo formal antes de encerrar o caso quando a IA emite
+  // [ACORDO_FECHADO]. Falhas não interrompem o fluxo do chat.
+  if (aiText.includes('[ACORDO_FECHADO]')) {
+    const agreement = parseAgreement(aiText);
+    const fallbackValue = Number(caseData.updated_value || caseData.original_value) || 0;
+    const defaultExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const insert: Record<string, unknown> = {
+      tenant_id: resolvedTenantId,
+      client_id: relatedClient?.id ?? null,
+      contract_id: relatedContract?.id ?? null,
+      financial_title_id: financialTitle?.id ?? null,
+      case_id: caseId,
+      status: 'accepted',
+      original_value: (agreement.originalValue ?? Number(caseData.original_value)) || null,
+      proposed_value: agreement.proposedValue,
+      agreed_value: (agreement.agreedValue ?? fallbackValue) || null,
+      discount_percent: agreement.discountPercent,
+      installment_count: agreement.installmentCount,
+      expires_at:
+        agreement.expiresAt && new Date(agreement.expiresAt).getTime() > Date.now()
+          ? agreement.expiresAt
+          : defaultExpiry,
+      accepted_at: new Date().toISOString(),
+      created_by: caseData.user_id || null,
+      metadata: { source: 'ai_pipeline' },
+    };
+
+    try {
+      const { data: negotiation, error: negotiationError } = await database
+        .from('negotiations')
+        .insert(insert)
+        .select('*')
+        .single();
+      if (negotiationError) throw negotiationError;
+
+      await recordAuditAction(database, {
+        tenantId: resolvedTenantId,
+        entityType: 'negotiation',
+        entityId: negotiation.id,
+        caseId,
+        actorUserId: caseData.user_id || null,
+        action: 'NEGOTIATION_CREATED',
+        after: negotiation,
+        metadata: { source: 'ai_pipeline' },
+      });
+    } catch (negotiationErr) {
+      console.error('Falha ao registrar acordo formal do pipeline:', negotiationErr);
+      try {
+        await recordAuditAction(database, {
+          tenantId: resolvedTenantId,
+          entityType: 'negotiation',
+          entityId: caseId,
+          caseId,
+          actorUserId: caseData.user_id || null,
+          action: 'NEGOTIATION_CREATE_FAILED',
+          details: getErrorMessage(negotiationErr),
+          metadata: { source: 'ai_pipeline' },
+        });
+      } catch (auditErr) {
+        console.error('Falha ao auditar falha de registro de acordo:', auditErr);
+      }
+    }
+  }
 
   if (newStatus !== caseData.status) {
     const statusQuery = database.from('cases').update({ status: newStatus }).eq('id', caseId);

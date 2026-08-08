@@ -59,7 +59,7 @@ export function getFinancialTitleEligibility(
   const daysOverdue = getDaysOverdue(dueDate);
   const normalizedStatus = status.toLowerCase();
 
-  if (['paid', 'settled', 'recovered'].includes(normalizedStatus)) {
+  if (['paid', 'settled', 'recovered', 'partial'].includes(normalizedStatus)) {
     return { eligible: false, reason: 'paid', daysOverdue };
   }
   if (['cancelled', 'canceled'].includes(normalizedStatus)) {

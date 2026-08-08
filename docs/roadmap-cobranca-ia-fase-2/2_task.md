@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Implementar acordos formais (`negotiations`)
 type: api
 complexity: high
@@ -13,6 +13,8 @@ dependencies: [1]
 A tabela `negotiations` já existe no `supabase_tenant_model.sql` mas não tem API nem UI. Hoje a IA emite a tag `[ACORDO_FECHADO]` e apenas troca o status do caso para `closed` — sem persistir o acordo. Implementar CRUD de acordos com persistência formal (valor original, proposto, acordado, desconto %, parcelas, expira em, aceito em) e conectar o pipeline de IA para registrar acordo automaticamente quando a tag for detectada. A "promessa de pagamento" sem persistência formal é a maior fonte de perda em cobrança.
 
 <critical>
+- Leia o PRD e a TechSpec antes de implementar.
+- Referencie as seções relevantes da TechSpec.
 - O registro de acordo DEVE ser atomicamente vinculado ao caso e ao título financeiro.
 - O pipeline de IA DEVE criar o `negotiation` automaticamente ao detectar `[ACORDO_FECHADO]`.
 - A transição `negotiation.status` (open → accepted → expired → fulfilled → defaulted) DEVE registrar auditoria.

@@ -13,6 +13,8 @@ dependencies: [2]
 O `Supervisor` classifica a intenção da mensagem atual, mas falta análise longitudinal de todo o histórico de um caso. Criar endpoint `/api/cases/[id]/insights` que usa LLM para gerar: heatmap de sentimento ao longo do tempo, principais objeções levantadas, probabilidade atual de acordo, e temas recorrentes. Alimenta o painel lateral do operador humano com contexto estratégico. Tendência forte na indústria (Experian: predictive analytics é o maior ROI).
 
 <critical>
+- Leia o PRD e a TechSpec antes de implementar.
+- Referencie as seções relevantes da TechSpec.
 - Use as chaves do dono do caso (RPC `get_user_ai_keys`).
 - Limite o token budget — envie apenas resumo, não o histórico completo se >50 mensagens.
 - Pipeline deve ser read-only (não muta caso).
@@ -25,7 +27,7 @@ O `Supervisor` classifica a intenção da mensagem atual, mas falta análise lon
 3. O endpoint DEVE usar LLM do provedor do dono do caso com fallback para opencode.
 4. A UI do detalhe do caso DEVE renderizar gráfico de sentimento e cartões de objeções.
 5. O endpoint DEVE ter cache de 5 minutos para evitar custo excessivo de LLM.
-6. O schema DEVE incluirケース + mensagens + estágio atual + histórico de acordos (tarefa 2).
+6. O schema DEVE incluir caso + mensagens + estágio atual + histórico de acordos (tarefa 2).
 </requirements>
 
 ## Subtarefas

@@ -13,7 +13,9 @@ dependencies: [1, 2]
 O agente `analise_credito` já existe mas só gera texto descritivo (risco baixo/médio/alto). Evoluir para scoring quantitativo persistido: cada caso/cliente recebe `propensity_score` (0-1) que prioriza atribuição e ajusta agressividade da abordagem. Tendência forte (Experian: predictive analytics é o maior ROI). Começar incremental com heurística (dias atraso + histórico de pagamento + resposta anterior) e evoluir para embedding/cluster depois.
 
 <critical>
-- Score DEVE ser persistido em `cases.metadata` ou nova coluna — não calculado on-the-fly em cada query.
+- Leia o PRD e a TechSpec antes de implementar.
+- Referencie as seções relevantes da TechSpec.
+- Score DEVE ser persistido na coluna `cases.propensity_score` — não calculado on-the-fly em cada query.
 - Recálculo DEVE ser assíncrono via cron, não bloquear criação de caso.
 - Score NÃO DEVE substituir julgamento humano — é sinal auxiliar.
 - Execute `npm run lint && npm run build`.
