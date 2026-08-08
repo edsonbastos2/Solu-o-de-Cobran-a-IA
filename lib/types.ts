@@ -398,3 +398,11 @@ export interface ContractExtractionResult {
   protest_allowed: boolean;
   forum: string;
 }
+
+export interface CaseInsights {
+  sentiment_trend: { date: string; score: number }[];
+  main_objections: string[];
+  theme_summary: string;
+  agreement_probability: number;
+  recommended_tone: string;
+}
