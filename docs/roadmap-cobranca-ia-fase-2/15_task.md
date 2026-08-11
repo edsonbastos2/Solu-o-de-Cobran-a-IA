@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Notificações in-app ao operador
 type: frontend
 complexity: medium

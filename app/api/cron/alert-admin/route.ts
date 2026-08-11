@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { recordAuditAction } from '@/lib/audit';
-
-// Função simulada para envio de e-mail ao administrador
-async function sendAdminEmail(caseId: string, caseName: string, hours: number) {
-  console.log(`[MOCK EMAIL SENT] Caso ${caseId.substring(0, 8)} inativo há ${Math.floor(hours)}h`);
-}
+import { createNotification } from '@/lib/notifications';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   // CRON_SECRET é OBRIGATÓRIO.
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
-    console.error('CRON_SECRET não configurado. Bloqueando endpoint de cron.');
+    logger.error('CRON_SECRET não configurado. Bloqueando endpoint de cron.');
     return NextResponse.json({ error: 'Servidor mal configurado.' }, { status: 503 });
   }
   const authHeader = req.headers.get('authorization');
@@ -45,7 +42,7 @@ export async function GET(req: NextRequest) {
         .order('created_at', { ascending: false });
 
       if (messagesError) {
-        console.error(`Erro ao buscar mensagens do caso ${c.id}:`, messagesError);
+        logger.error('Erro ao buscar mensagens do caso', { tenantId: c.tenant_id }, { caseId: c.id, error: messagesError.message });
         continue;
       }
 
@@ -62,8 +59,15 @@ export async function GET(req: NextRequest) {
       // 4. Se a última interação tem mais de 48h
       if (hoursSinceLastInteraction >= 48) {
         
-        // 5. Enviar notificação por e-mail para o admin
-        await sendAdminEmail(c.id, c.name, hoursSinceLastInteraction);
+        // 5. Criar notificação in-app para o operador/tenant
+        await createNotification(supabase, {
+          tenantId: c.tenant_id,
+          userId: c.user_id || null,
+          type: 'warning',
+          title: 'Caso parado há mais de 48h',
+          body: `${c.name} está sem interação há ${Math.floor(hoursSinceLastInteraction)}h.`,
+          relatedCaseId: c.id,
+        });
         
         // 6. Atualizar o status do caso para requerer atenção humana
         await supabase
@@ -90,7 +94,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, alerted: alertedCases });
   } catch (error: any) {
-    console.error('Admin Alert Cron Error:', error);
+    logger.error('Admin Alert Cron Error', undefined, { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
   }
 }

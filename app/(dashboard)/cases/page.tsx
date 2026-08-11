@@ -16,7 +16,8 @@ import {
   Play, 
   Radio, 
   RefreshCw, 
-  MessageSquare
+  MessageSquare,
+  FileDown
 } from 'lucide-react';
 import { formatPhoneInput } from '@/lib/utils';
 import { Pagination } from '@/components/pagination';
@@ -29,10 +30,11 @@ export default function CasesPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sort, setSort] = useState('recent');
   const [startingNegotiationId, setStartingNegotiationId] = useState<string | null>(null);
   const limit = 10;
 
-  const queryUrl = `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}${tenantQuery ? `&${tenantQuery}` : ''}`;
+  const queryUrl = `/api/cases?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}&status=${statusFilter}&sort=${sort}${tenantQuery ? `&${tenantQuery}` : ''}`;
   const canFetch = !authLoading && Boolean(user) && !needsTenantSelection;
   const { data, error, isLoading: loading, mutate } = useSWR<CasesListResponse>(canFetch ? [queryUrl, user?.id || 'anon', tenantId] : null, ([url]) => fetcher(url), {
     refreshInterval: 5000 // Polling fallback every 5s
@@ -168,7 +170,15 @@ export default function CasesPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+<div className="flex items-center gap-3">
+            <a
+              href={`/api/reports/portfolio.csv?${tenantQuery ? `${tenantQuery}&` : ''}status=${statusFilter}`}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-colors shadow-sm text-xs font-semibold"
+              title="Exportar carteira por estágio (CSV)"
+            >
+              <FileDown className="w-4 h-4 text-emerald-600" />
+              Exportar CSV
+            </a>
             <button
               onClick={() => mutate()}
               className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
@@ -267,6 +277,20 @@ export default function CasesPage() {
                   {tab.label}
                 </button>
               ))}
+
+              {/* Ordenação por propensão (priorização) */}
+              <select
+                value={sort}
+                onChange={(e) => {
+                  setSort(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Ordenar casos"
+                className="ml-2 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 bg-white text-slate-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="recent">Mais recentes</option>
+                <option value="score">Propensão a pagar</option>
+              </select>
             </div>
           </div>
 
@@ -278,8 +302,9 @@ export default function CasesPage() {
                   <th scope="col" className="px-6 py-3.5">Devedor</th>
                   <th scope="col" className="px-6 py-3.5">Contato</th>
                   <th scope="col" className="px-6 py-3.5">Valores (Orig. / Atual)</th>
-                  <th scope="col" className="px-6 py-3.5">Vencimento</th>
+<th scope="col" className="px-6 py-3.5">Vencimento</th>
                   <th scope="col" className="px-6 py-3.5">Origem</th>
+                  <th scope="col" className="px-6 py-3.5">Propensão</th>
                   <th scope="col" className="px-6 py-3.5">Status</th>
                   <th scope="col" className="px-6 py-3.5 text-right">Ações</th>
                 </tr>
@@ -390,6 +415,28 @@ export default function CasesPage() {
                             <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 border border-amber-200">
                               Contexto legado incompleto
                             </span>
+                          )}
+</td>
+
+                        {/* Propensão a pagamento */}
+                        <td className="px-6 py-4">
+                          {typeof c.propensity_score === 'number' && c.propensity_score !== null ? (
+                            <span
+                              className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold border ${
+                                c.propensity_score >= 0.7
+                                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                  : c.propensity_score >= 0.4
+                                    ? 'bg-amber-50 border-amber-200 text-amber-700'
+                                    : 'bg-red-50 border-red-200 text-red-700'
+                              }`}
+                              title={`Score ${c.propensity_score.toFixed(2)} — atualizado ${
+                                c.propensity_updated_at ? new Date(c.propensity_updated_at).toLocaleString('pt-BR') : '—'
+                              }`}
+                            >
+                              {c.propensity_score >= 0.7 ? 'Alta' : c.propensity_score >= 0.4 ? 'Média' : 'Baixa'}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
                           )}
                         </td>
 

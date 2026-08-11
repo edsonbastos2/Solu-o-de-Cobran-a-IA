@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Quarentena de contas (`quarantines`)
 type: backend
 complexity: medium

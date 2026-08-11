@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Insights longitudinais do histórico de mensagens
 type: ai
 complexity: high

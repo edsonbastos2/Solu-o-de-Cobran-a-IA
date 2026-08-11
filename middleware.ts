@@ -6,7 +6,9 @@ const PUBLIC_PATHS = [
   '/login',
   '/api/webhook',        // webhook usa seu próprio secret
   '/api/cron',            // cron usa CRON_SECRET
-  '/api/extract-contract' // endpoint auxiliar (valida internamente)
+  // /api/extract-contract removido de PUBLIC_PATHS em hardening de segurança:
+  // antes qualquer anônimo podia consumir OPENCODE_API_KEY do servidor. Agora
+  // exige sessão (validada pelo middleware) — o handler mantém o fluxo.
 ];
 
 function isPublic(pathname: string): boolean {
@@ -16,13 +18,21 @@ function isPublic(pathname: string): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Gera/repassa request_id para correlação de logs
+  const existingRequestId = req.headers.get('x-request-id');
+  const requestId = existingRequestId && /^[\w.-]{8,64}$/.test(existingRequestId)
+    ? existingRequestId
+    : crypto.randomUUID();
+
   // Skip assets e API internas públicas
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon') ||
     isPublic(pathname)
   ) {
-    return NextResponse.next();
+    const publicRes = NextResponse.next();
+    publicRes.headers.set('x-request-id', requestId);
+    return publicRes;
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -30,11 +40,14 @@ export async function middleware(req: NextRequest) {
 
   if (!supabaseUrl || !supabaseAnonKey) {
     // Sem Supabase config: não bloqueia (app rodando em modo demo)
-    return NextResponse.next();
+    const demoRes = NextResponse.next();
+    demoRes.headers.set('x-request-id', requestId);
+    return demoRes;
   }
 
   // Cria um client server-side que lê/escreve cookies da request
   const res = NextResponse.next();
+  res.headers.set('x-request-id', requestId);
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {

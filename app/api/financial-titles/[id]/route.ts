@@ -176,9 +176,106 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const fulfilledNegotiationIds: string[] = [];
     let warning: string | null = null;
+    const removedNegativationIds: string[] = [];
 
     if (String(updated.status) === 'paid') {
-      const { data: acceptedNegotiations, error: negotiationQueryError } = await ctx.supabase
+      // CDC: remoção da negativação em até 2 dias úteis após quitação.
+      const { data: negativations, error: negativationQueryError } = await ctx.supabase
+        .from('negativations')
+        .select('id')
+        .eq('tenant_id', ctx.tenantId)
+        .eq('financial_title_id', id)
+        .in('status', ['pending_notification', 'notified', 'requested', 'completed']);
+
+      if (negativationQueryError) {
+        warning = 'Título baixado, mas não foi possível localizar negativações para remoção automática.';
+      } else {
+        for (const negativation of (negativations || [])) {
+          try {
+            const { data: updatedNegativation, error: negativationUpdateError } = await ctx.supabase
+              .from('negativations')
+              .update({ status: 'removed', removed_at: new Date().toISOString() })
+              .eq('id', negativation.id)
+              .eq('tenant_id', ctx.tenantId)
+              .select('id, status, removed_at')
+              .single();
+            if (negativationUpdateError) {
+              warning = warning
+                ? `${warning} Falha ao remover negativação ${negativation.id}.`
+                : `Falha ao remover negativação ${negativation.id}.`;
+              continue;
+            }
+            await recordAuditAction(ctx.supabase, {
+              tenantId: ctx.tenantId,
+              entityType: 'negativation',
+              entityId: negativation.id,
+              caseId: linkedCase?.id,
+              actorUserId: ctx.userId,
+              action: 'NEGATIVATION_REMOVED',
+              after: updatedNegativation,
+              metadata: { source: 'title_full_payment', title_id: id },
+            });
+            removedNegativationIds.push(negativation.id);
+          } catch (err) {
+            warning = warning
+              ? `${warning} Falha ao registrar remoção da negativação ${negativation.id}.`
+              : `Falha ao registrar remoção da negativação ${negativation.id}.`;
+          }
+        }
+      }
+    }
+
+    const cancelledProtestIds: string[] = [];
+    if (String(updated.status) === 'paid') {
+      // Quitação cancela automaticamente protestos ativos do título.
+      const { data: protests, error: protestQueryError } = await ctx.supabase
+        .from('protests')
+        .select('id')
+        .eq('tenant_id', ctx.tenantId)
+        .eq('financial_title_id', id)
+        .in('status', ['pending_notification', 'notified', 'requested', 'completed']);
+
+      if (protestQueryError) {
+        warning = warning
+          ? `${warning} Não foi possível localizar protestos para cancelamento automático.`
+          : 'Título baixado, mas não foi possível localizar protestos para cancelamento automático.';
+      } else {
+        for (const protest of (protests || [])) {
+          try {
+            const { data: updatedProtest, error: protestUpdateError } = await ctx.supabase
+              .from('protests')
+              .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+              .eq('id', protest.id)
+              .eq('tenant_id', ctx.tenantId)
+              .select('id, status, cancelled_at')
+              .single();
+            if (protestUpdateError) {
+              warning = warning
+                ? `${warning} Falha ao cancelar protesto ${protest.id}.`
+                : `Falha ao cancelar protesto ${protest.id}.`;
+              continue;
+            }
+            await recordAuditAction(ctx.supabase, {
+              tenantId: ctx.tenantId,
+              entityType: 'protest',
+              entityId: protest.id,
+              caseId: linkedCase?.id,
+              actorUserId: ctx.userId,
+              action: 'PROTEST_CANCELLED',
+              after: updatedProtest,
+              metadata: { source: 'title_full_payment', title_id: id },
+            });
+            cancelledProtestIds.push(protest.id);
+          } catch (err) {
+            warning = warning
+              ? `${warning} Falha ao registrar cancelamento do protesto ${protest.id}.`
+              : `Falha ao registrar cancelamento do protesto ${protest.id}.`;
+          }
+        }
+      }
+    }
+
+    const { data: acceptedNegotiations, error: negotiationQueryError } = await ctx.supabase
         .from('negotiations')
         .select('id, case_id, status')
         .eq('tenant_id', ctx.tenantId)
@@ -222,12 +319,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           }
         }
       }
-    }
 
     const payload: Record<string, unknown> = {
       ok: true,
       title: updated,
       fulfilled_negotiation_ids: fulfilledNegotiationIds,
+      removed_negativation_ids: removedNegativationIds,
+      cancelled_protest_ids: cancelledProtestIds,
     };
     if (warning) payload.warning = warning;
 

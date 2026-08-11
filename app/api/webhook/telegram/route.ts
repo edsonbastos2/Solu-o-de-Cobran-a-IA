@@ -4,6 +4,7 @@ import { processChat } from '@/lib/agent';
 import { rateLimit } from '@/lib/rate-limit';
 import { resolveWebhookTenant } from '@/lib/webhook-tenant';
 import { recordAuditAction } from '@/lib/audit';
+import { logger } from '@/lib/logger';
 
 interface TelegramUpdate {
   update_id: number;
@@ -135,8 +136,8 @@ export async function POST(req: NextRequest) {
     }
 
     const rlKey = `tg:${chatId}`;
-    if (!rateLimit(rlKey, 5, 60_000)) {
-      console.warn('Rate limit Telegram webhook excedido para', chatId);
+    if (!(await rateLimit(rlKey, 5, 60_000))) {
+      logger.warn('Rate limit Telegram webhook excedido', undefined, { chatId });
       return NextResponse.json({ ok: true, rateLimited: true });
     }
 
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, newStatus: result.newStatus });
   } catch (error) {
-    console.error('Telegram Webhook Error:', error);
+    logger.error('Telegram Webhook Error', undefined, { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

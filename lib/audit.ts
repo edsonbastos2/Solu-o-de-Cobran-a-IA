@@ -6,6 +6,7 @@ export interface AuditActionParams {
   entityType: string;
   entityId: string;
   actorUserId: string | null;
+  actorRole?: 'owner' | 'admin' | 'member' | null;
   action: string;
   caseId?: string;
   metadata?: Record<string, unknown>;
@@ -24,6 +25,7 @@ export async function recordAuditAction(client: AuditClient, params: AuditAction
     case_id: params.caseId ?? (params.entityType === 'case' ? params.entityId : null),
     user_id: params.actorUserId,
     actor_user_id: params.actorUserId,
+    actor_role: params.actorRole ?? null,
     entity_type: params.entityType,
     entity_id: params.entityId,
     action: params.action,
@@ -41,6 +43,7 @@ export async function recordAuditAction(client: AuditClient, params: AuditAction
 /** Compatibilidade para auditoria administrativa já existente. */
 export async function auditAdminAction(params: {
   actorUserId: string;
+  actorRole?: 'owner' | 'admin' | 'member' | null;
   action: string;
   details?: string;
   targetUserId?: string;
@@ -75,6 +78,7 @@ export async function auditAdminAction(params: {
     entityType: params.entityType ?? (params.caseId ? 'case' : 'admin'),
     entityId: params.entityId ?? params.caseId ?? params.actorUserId,
     actorUserId: params.actorUserId,
+    actorRole: params.actorRole ?? null,
     action: params.action,
     caseId: params.caseId,
     details: params.details,

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { logger } from '@/lib/logger';
 
 export interface TenantAccess {
   userId: string | null;
@@ -31,7 +32,7 @@ export async function getTenantAccess(requestedUserId?: string | null): Promise<
       return { userId: requestedUserId, isSuperAdmin: profile.is_super_admin === true, tenantId: profile.tenant_id };
     }
   } catch (err) {
-    console.error('Error checking superadmin status:', err);
+    logger.error('Error checking superadmin status', undefined, { error: err instanceof Error ? err.message : String(err) });
   }
 
   return { userId: requestedUserId, isSuperAdmin: false, tenantId: null };

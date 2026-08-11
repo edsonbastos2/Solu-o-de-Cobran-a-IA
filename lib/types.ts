@@ -112,6 +112,8 @@ export interface Case {
   debtor_document?: string;
   debtor_address?: string;
   telegram_chat_id?: string;
+  propensity_score?: number | null;
+  propensity_updated_at?: string | null;
 }
 
 export interface Message {
@@ -210,6 +212,48 @@ export interface FinancialTitleWithRelations extends FinancialTitle {
 
 export interface FinancialTitlesResponse {
   financial_titles: FinancialTitleWithEligibility[];
+}
+
+export interface MessageTemplate {
+  id: string;
+  tenant_id?: string;
+  name: string;
+  channel: string;
+  stage: string;
+  language: string;
+  body: string;
+  variables: string[];
+  is_active: boolean;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type MessageTemplateStage = import('@/lib/message-templates').MessageTemplate['stage'];
+
+export interface MessageTemplatesResponse {
+  templates: MessageTemplate[];
+  totalPages: number;
+  total: number;
+}
+
+export interface Notification {
+  id: string;
+  tenant_id: string;
+  user_id?: string | null;
+  type: 'info' | 'warning' | 'error' | 'success';
+  title: string;
+  body?: string | null;
+  related_case_id?: string | null;
+  read_at?: string | null;
+  created_at: string;
+}
+
+export interface NotificationsResponse {
+  notifications: Notification[];
+  unread: number;
+  totalPages: number;
+  total: number;
 }
 
 export interface CaseWithRelations extends Case {

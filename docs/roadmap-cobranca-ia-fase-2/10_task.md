@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Pipeline jurídico (`legal_processes`)
 type: backend
 complexity: high

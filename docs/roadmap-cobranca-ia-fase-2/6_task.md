@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Scoring de propensão a pagamento
 type: ai
 complexity: high

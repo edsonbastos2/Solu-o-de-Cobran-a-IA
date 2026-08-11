@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Permissões granulares por role
 type: backend
 complexity: medium

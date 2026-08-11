@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Edição de contrato e cliente (CRUD faltante)
 type: api
 complexity: medium

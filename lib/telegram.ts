@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getSupabaseAdmin } from './supabase-admin';
+import { logger } from './logger';
 
 interface TelegramProfile {
   telegram_bot_token?: string;
@@ -30,13 +31,13 @@ export async function sendTelegramMessage(to: string, message: string, userId?: 
   }
 
   if (!botToken) {
-    console.warn("Telegram bot token missing. Message not sent.");
+    logger.warn("Telegram bot token missing. Message not sent.", { userId });
     return false;
   }
 
   chatId = to.replace(/\D/g, '');
   if (!chatId) {
-    console.warn("Invalid Telegram chat ID, not sending:", to);
+    logger.warn("Invalid Telegram chat ID, not sending.", { userId }, { to });
     return false;
   }
 
@@ -60,13 +61,13 @@ export async function sendTelegramMessage(to: string, message: string, userId?: 
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error("Failed to send Telegram message:", errorData);
+      logger.error("Failed to send Telegram message", { userId }, { status: response.status, body: errorData.slice(0, 300) });
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error("Error sending Telegram message:", error);
+    logger.error("Error sending Telegram message", { userId }, { error: error instanceof Error ? error.message : String(error) });
     return false;
   }
 }

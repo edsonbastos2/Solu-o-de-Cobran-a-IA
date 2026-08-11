@@ -1,10 +1,63 @@
+# Dependências
 node_modules/
+
+# Build
 .next/
+out/
+build/
+dist/
+
+# Cobertura de testes
 coverage/
-.DS_Store
+*.lcov
+.nyc_output/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment (secrets)
 .env*
 !.env.example
 
-# Windows reserved device name (accidentally created, cannot be deleted via path)
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows reserved device name (acidental, não deletável via path)
 nul
+
+# Next.js cache de typecheck
+tsconfig.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# Scripts SQL de migration do Supabase
+# ---------------------------------------------------------------------------
+# Estes scripts são aplicados manualmente ao Supabase remoto via MCP
+# (`supabase_apply_migration`) e ficam registrados em
+# `supabase_migrations.schema_migrations`. NÃO devem subir no repositório
+# porque:
+#  1. Histórico imutável já vive em `supabase/migrations/` no projeto Supabase.
+#  2. Estes arquivos são snapshots manuais (rascunho) — não fonte de verdade.
+#  3. Evitam divergência entre o schema aplicado e o schema versionado.
+# Mantenha o padrão de migrations no projeto Supabase (.sql files em
+# `supabase/migrations/`) ao invés de scripts soltos na raiz do repo Next.
+supabase_*.sql
+
+# Relatórios de review gerados por automação (cy-review-round)
+docs/**/reviews-*/
+docs/**/reviews-*/
+
+# Work directory de skills/agentes locais (instalados via npx skills add)
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+
+# Diretórios de skills locais que são symlinks/broken (não versionar)
+.claude/skills/

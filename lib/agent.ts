@@ -7,6 +7,9 @@ import { getCollectionStage } from '@/lib/finance';
 import { fetchAgents } from '@/lib/multi-agent';
 import { recordAuditAction } from '@/lib/audit';
 import { CaseWithRelations } from '@/lib/types';
+import { logger } from '@/lib/logger';
+import { getActiveQuarantine } from '@/lib/quarantine';
+import { resolveTemplateVariables } from '@/lib/message-templates';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 
@@ -237,7 +240,7 @@ async function callLLM(
 
       if (isTransient && attempt < maxRetries) {
         const delay = Math.pow(2, attempt) * 1000;
-        console.warn(`Transient error in AI call (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms...`, errorMessage);
+        logger.warn('Transient error in AI call', undefined, { attempt, maxRetries, errorMessage });
         await sleep(delay);
         continue;
       }
@@ -269,6 +272,12 @@ export async function processChat(caseId: string, message: string, database?: Su
   const relatedCase = caseData as CaseWithRelations;
   const resolvedTenantId = tenantId || relatedCase.tenant_id;
   if (!resolvedTenantId) throw new Error('Tenant não encontrado para o caso.');
+
+  // Guard de quarentena: caso em quarentena não recebe respostas automatizadas.
+  const quarantine = await getActiveQuarantine(database, caseId, resolvedTenantId);
+  if (quarantine) {
+    throw new Error(`Caso em quarentena (${quarantine.status}): mensagens automáticas bloqueadas. Motivo: ${quarantine.reason || 'não informado'}.`);
+  }
 
   const stage = getCollectionStage(
     caseData.due_date,
@@ -413,7 +422,7 @@ Retorne um JSON: { "selected_role": "role", "reasoning": "...", "guidance": "...
         const parsed = JSON.parse(supResponse.replace(/```json/g, '').replace(/```/g, '').trim());
         if (parsed.selected_role) routing = parsed;
       } catch (err) {
-        console.warn("Supervisor fallback reasoning triggered:", err);
+        logger.warn('Supervisor fallback reasoning triggered', undefined, { error: getErrorMessage(err) });
       }
 
       const specialist = activeAgents.find(a => a.role_type === routing.selected_role) || activeAgents.find(a => a.role_type === 'negociacao') || activeAgents[0];
@@ -432,7 +441,16 @@ ${domainContext}
 
 Se o acordo for fechado, inclua a tag [ACORDO_FECHADO]. Se necessitar intervenção humana, inclua [HANDOFF].`;
 
-      const rawDraft = await callLLM(specialistPrompt, currentHistory, aiProvider, specialist.model || aiModel, apiKey, ollamaBaseUrl, Number(specialist.temperature) || 0.2);
+      let rawDraft: string;
+      let usedTemplate = false;
+      try {
+        rawDraft = await callLLM(specialistPrompt, currentHistory, aiProvider, specialist.model || aiModel, apiKey, ollamaBaseUrl, Number(specialist.temperature) || 0.2);
+      } catch (specialistErr) {
+        // Fallback: template ativo do tenant compatível com o estágio.
+        logger.warn('Especialista falhou, usando template como fallback', undefined, { error: getErrorMessage(specialistErr), stage: stage.id });
+        rawDraft = await templateFallback(database, resolvedTenantId, caseId, stage.id);
+        usedTemplate = true;
+      }
       aiText = rawDraft || "Desculpe, não entendi sua solicitação.";
 
       if (qualidade && qualidade.is_active) {
@@ -454,12 +472,16 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
             aiText = qParsed.corrected_response;
           }
         } catch (qErr) {
-          console.warn("Quality agent audit skipped due to parse error:", qErr);
+          logger.warn('Quality agent audit skipped due to parse error', undefined, { error: getErrorMessage(qErr) });
         }
+      }
+
+      if (usedTemplate) {
+        aiText = `${aiText}\n\n[Template de fallback aplicado por indisponibilidade da IA]`;
       }
     }
   } catch (error: unknown) {
-    console.error("AI API Error:", error);
+    logger.error('AI API Error', undefined, { error: getErrorMessage(error) });
     throw new Error(`Erro na IA: ${getErrorMessage(error)}`);
   }
 
@@ -489,7 +511,7 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
   if (caseData.phone || caseData.telegram_chat_id) {
     const destination = caseData.telegram_chat_id || caseData.phone;
     sendMessage(destination, cleanAiText, caseData.user_id).catch(async err => {
-      console.error("Error in background message send:", err);
+      logger.error('Background message send failed', { tenantId: resolvedTenantId, caseId }, { error: getErrorMessage(err) });
 
       if (database) {
         const provider = caseData.telegram_chat_id ? 'Telegram' : 'WhatsApp';
@@ -554,7 +576,7 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
         metadata: { source: 'ai_pipeline' },
       });
     } catch (negotiationErr) {
-      console.error('Falha ao registrar acordo formal do pipeline:', negotiationErr);
+      logger.error('Falha ao registrar acordo formal do pipeline', { tenantId: resolvedTenantId, caseId }, { error: getErrorMessage(negotiationErr) });
       try {
         await recordAuditAction(database, {
           tenantId: resolvedTenantId,
@@ -567,7 +589,7 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
           metadata: { source: 'ai_pipeline' },
         });
       } catch (auditErr) {
-        console.error('Falha ao auditar falha de registro de acordo:', auditErr);
+        logger.error('Falha ao auditar falha de registro de acordo', { tenantId: resolvedTenantId, caseId }, { error: getErrorMessage(auditErr) });
       }
     }
   }
@@ -591,4 +613,36 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
   }
 
   return { text: aiText, newStatus, stage };
+}
+
+/**
+ * Fallback quando a LLM do especialista falha: busca o template ativo do tenant
+ * compatível com o estágio e resolve as variáveis com o dado real do caso.
+ * Lança erro se nenhum template estiver disponível (o caller decide).
+ */
+async function templateFallback(
+  database: SupabaseClient,
+  tenantId: string,
+  caseId: string,
+  stageId: string
+): Promise<string> {
+  const { data: template, error } = await database
+    .from('message_templates')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('stage', stageId === 'especializada' ? 'especializada' : stageId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !template) {
+    throw new Error('Especialista indisponível e nenhum template de fallback cadastrado para o estágio.');
+  }
+
+  const { body } = await resolveTemplateVariables(
+    { supabase: database, tenantId, caseId },
+    template.body
+  );
+  return body;
 }

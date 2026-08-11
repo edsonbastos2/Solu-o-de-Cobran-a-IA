@@ -1,5 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUser, serverError } from '@/lib/api-auth';
+import { rateLimit } from '@/lib/rate-limit';
+import { recordAuditAction } from '@/lib/audit';
+import { logger } from '@/lib/logger';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go';
 
@@ -31,6 +35,21 @@ Return a JSON with the following fields:
 const MODEL = 'minimax-m3';
 
 export async function POST(req: NextRequest) {
+  // Autenticação obrigatória — antes este endpoint era public, permitindo que
+  // qualquer anônimo consumisse a OPENCODE_API_KEY do servidor (custo ilimitado).
+  const auth = await requireUser(req);
+  if ('response' in auth) return auth.response;
+  const { userId, currentTenantId } = auth.ctx;
+
+  // Rate limit por usuário: 10 extrações/minuto — protege contra abuso da chave.
+  const allowed = await rateLimit(`extract-contract:${userId}`, 10, 60_000);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Limite de extrações por minuto excedido. Tente novamente em instantes.' },
+      { status: 429 }
+    );
+  }
+
   try {
     const apiKey = process.env.OPENCODE_API_KEY;
     if (!apiKey) {
@@ -107,9 +126,31 @@ export async function POST(req: NextRequest) {
       result = match ? JSON.parse(match[0]) : {};
     }
 
+    // Auditoria do uso da chave de IA (prevenção de abuso e rastreabilidade).
+    try {
+      const admin = (await import('@/lib/supabase-admin')).getSupabaseAdmin();
+      if (admin) {
+        // tenant_id opcional — extracão de contrato pode ocorrer antes da
+        // seleção do tenant (super-admin onboarding). Auditoria global do ator.
+        await recordAuditAction(admin, {
+          tenantId: currentTenantId ?? '',
+          entityType: 'contract_extraction',
+          entityId: result?.contract_number || 'unknown',
+          actorUserId: userId,
+          action: 'CONTRACT_EXTRACTED',
+          metadata: {
+            file_name: file?.name || null,
+            file_size: file?.size || null,
+            has_text: !!contractText,
+            model: MODEL,
+          },
+        }).catch(() => { /* auditoria não bloqueia extração */ });
+      }
+    } catch { /* no-op */ }
+
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error("Extraction error:", error);
+    logger.error('Extraction error', undefined, { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

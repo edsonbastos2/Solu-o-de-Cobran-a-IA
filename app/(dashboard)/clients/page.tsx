@@ -2,17 +2,18 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Users, Search, Pencil, Check, X } from 'lucide-react';
+import { Users, Search, Pencil, Check, X, UserPlus } from 'lucide-react';
 import { formatPhoneInput } from '@/lib/utils';
 import { Pagination } from '@/components/pagination';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveTenant } from '@/hooks/use-active-tenant';
 import { Client } from '@/lib/types';
 import { fetcher, fetchWithAuth } from "@/lib/api";
+import { ClientFormModal, ClientDeleteButton } from '@/components/clients/client-actions';
 
 export default function ClientsPage() {
   const { user } = useAuth();
-  const { tenantQuery } = useActiveTenant();
+  const { tenantQuery, isAdmin } = useActiveTenant();
   const [page, setPage] = useState(1);
   const limit = 10;
 
@@ -23,6 +24,7 @@ export default function ClientsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState({ name: '', email: '', phone: '' });
   const [saving, setSaving] = useState(false);
+  const [showNewClient, setShowNewClient] = useState(false);
 
   const handleEditClick = (client: Client) => {
     setEditingId(client.id);
@@ -83,6 +85,15 @@ const handleSaveEdit = async (id: string) => {
             <h1 className="text-3xl font-semibold text-gray-900">Clientes</h1>
             <p className="text-gray-500 mt-1">Gestão de clientes cadastrados no sistema</p>
           </div>
+          {isAdmin && (
+            <button
+              onClick={() => setShowNewClient(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors"
+            >
+              <UserPlus className="w-4 h-4" />
+              Novo Cliente
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -186,15 +197,20 @@ const handleSaveEdit = async (id: string) => {
                           <td className="px-6 py-4">{client.document}</td>
                           <td className="px-6 py-4">{client.email || '-'}</td>
                           <td className="px-6 py-4">{client.phone ? formatPhoneInput(client.phone) : '-'}</td>
-                          <td className="px-6 py-4 text-right">
-                            <button 
-                              onClick={() => handleEditClick(client)}
-                               className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                               title="Editar Cliente"
-                               aria-label={`Editar cliente ${client.name || client.id}`}
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
+<td className="px-6 py-4 text-right">
+                            <div className="flex justify-end gap-1">
+                              {isAdmin && (
+                                <button 
+                                  onClick={() => handleEditClick(client)}
+                                   className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                   title="Editar Cliente"
+                                   aria-label={`Editar cliente ${client.name || client.id}`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                              )}
+                              {isAdmin && <ClientDeleteButton client={client} tenantQuery={tenantQuery} onDeleted={() => mutate()} />}
+                            </div>
                           </td>
                         </>
                       )}
@@ -213,6 +229,18 @@ const handleSaveEdit = async (id: string) => {
         </div>
 
       </main>
+
+      {showNewClient && (
+        <ClientFormModal
+          tenantQuery={tenantQuery}
+          onClose={() => setShowNewClient(false)}
+          onSaved={() => {
+            setShowNewClient(false);
+            setPage(1);
+            mutate();
+          }}
+        />
+      )}
     </div>
   );
 }

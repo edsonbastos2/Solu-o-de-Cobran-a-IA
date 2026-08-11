@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Observabilidade e logging estruturado
 type: infra
 complexity: medium

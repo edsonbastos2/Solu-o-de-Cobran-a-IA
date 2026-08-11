@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 
@@ -180,7 +181,7 @@ export async function fetchAgents(
 
     return data as AgentConfig[];
   } catch (err) {
-    console.error("Erro ao carregar agentes:", err);
+    logger.error('Erro ao carregar agentes', undefined, { error: err instanceof Error ? err.message : String(err) });
     return DEFAULT_AGENTS;
   }
 }
@@ -240,7 +241,7 @@ Responda em formato JSON válido com a estrutura:
       routing = parsed;
     }
   } catch (err) {
-    console.warn("Supervisor fallback reasoning triggered:", err);
+    logger.warn('Supervisor fallback reasoning triggered', undefined, { error: err instanceof Error ? err.message : String(err) });
   }
 
   // 2. Select Specialist
@@ -321,7 +322,7 @@ Analise e retorne em JSON:
         }
       }
     } catch (qErr) {
-      console.warn("Quality agent audit skipped due to parse error:", qErr);
+      logger.warn('Quality agent audit skipped due to parse error', undefined, { error: qErr instanceof Error ? qErr.message : String(qErr) });
     }
   }
 

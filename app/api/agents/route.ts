@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase-server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
 import { DEFAULT_AGENTS, AgentConfig } from '@/lib/multi-agent';
+import { recordAuditAction } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Supabase não configurado.' }, { status: 500 });
     }
 
-    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'admin', new URL(req.url).searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId, userId } = tenantContext.ctx;
 
@@ -69,10 +70,16 @@ export async function POST(req: NextRequest) {
         tenant_id: tenantId,
         user_id: userId
       }));
-      const { error } = await supabase
+      const { data: inserted, error } = await supabase
         .from('agents')
-        .insert(rows);
+        .insert(rows)
+        .select('id, name');
       if (error) return serverError('agents POST reset_defaults error', error);
+      await recordAuditAction(supabase, {
+        tenantId, entityType: 'agent', entityId: 'batch',
+        actorUserId: userId, action: 'AGENTS_RESET_DEFAULTS',
+        metadata: { source: 'manual', count: rows.length, ids: (inserted || []).map((r: { id: string }) => r.id) },
+      }).catch(() => {});
       return NextResponse.json({ success: true, count: rows.length }, { status: 201 });
     }
 
@@ -115,6 +122,12 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) return serverError('agents POST insert error', error);
+
+    await recordAuditAction(supabase, {
+      tenantId, entityType: 'agent', entityId: data.id,
+      actorUserId: userId, action: 'AGENT_CREATED',
+      after: data,
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, agent: data }, { status: 201 });
   } catch (error: unknown) {

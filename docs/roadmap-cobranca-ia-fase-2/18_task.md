@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Rate limiter multi-instância (Redis/Upstash)
 type: infra
 complexity: medium

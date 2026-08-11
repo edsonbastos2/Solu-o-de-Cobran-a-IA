@@ -29,7 +29,12 @@ import {
   MapPin,
   Sparkles,
   Layers,
-  Handshake
+  Handshake,
+  Ban,
+  Landmark,
+  Scale,
+  Building2,
+  UserRound
 } from 'lucide-react';
 import { AuditLog, Case, CaseDetailsResponse, CaseInsights, Client, ContractWithClient, FinancialTitle, Message, NegotiationWithRelations, NegotiationsListResponse } from '@/lib/types';
 import { formatPhoneInput, formatCurrency } from '@/lib/utils';
@@ -115,12 +120,92 @@ function FinancialSummaryCard({ caseData, stage, formattedOriginal, formattedUpd
   );
 }
 
+function LegalProcessCard({ legalProcess, tenantPath }: {
+  legalProcess: {
+    id: string;
+    status: string;
+    process_type: string;
+    process_number: string | null;
+    court: string | null;
+    filing_date: string | null;
+    lawyer_name: string | null;
+    lawyer_contact: string | null;
+    updated_at: string | null;
+  };
+  tenantPath: string;
+}) {
+  const statusLabels: Record<string, { label: string; className: string }> = {
+    open: { label: 'Em aberto', className: 'bg-slate-100 text-slate-600 border-slate-200' },
+    in_progress: { label: 'Em andamento', className: 'bg-sky-100 text-sky-700 border-sky-200' },
+    judgment_won: { label: 'Vitória judicial', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    judgment_lost: { label: 'Sentença desfavorável', className: 'bg-red-100 text-red-700 border-red-200' },
+    closed: { label: 'Encerrado', className: 'bg-slate-200 text-slate-600 border-slate-300' },
+  };
+  const meta = statusLabels[legalProcess.status] || statusLabels.closed;
+  const typeLabels: Record<string, string> = { execucao: 'Execução', monitoria: 'Monitória', cobranca: 'Cobrança', collection: 'Cobrança' };
+
+  return (
+    <div className="bg-white rounded-2xl border border-purple-200 p-5 shadow-sm space-y-4">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+        <Scale className="w-4 h-4 text-purple-600" />
+        Processo Jurídico
+      </h3>
+      <div className="space-y-3 text-sm">
+        <div className="flex items-center justify-between">
+          <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold ${meta.className}`}>
+            {meta.label}
+          </span>
+          <span className="text-xs font-semibold text-purple-700">{typeLabels[legalProcess.process_type] || legalProcess.process_type}</span>
+        </div>
+        {legalProcess.process_number && (
+          <div className="text-xs font-mono text-slate-500">Proc. {legalProcess.process_number}</div>
+        )}
+        {legalProcess.court && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <Building2 className="h-3.5 w-3.5 text-slate-400" />
+            {legalProcess.court}
+          </div>
+        )}
+        {legalProcess.filing_date && (
+          <div className="text-xs text-slate-500">
+            Distribuição: {new Date(legalProcess.filing_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+          </div>
+        )}
+        {legalProcess.lawyer_name && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <UserRound className="h-3.5 w-3.5 text-slate-400" />
+            <span>
+              <span className="font-semibold text-slate-700">{legalProcess.lawyer_name}</span>
+              {legalProcess.lawyer_contact && <span className="text-slate-400"> · {legalProcess.lawyer_contact}</span>}
+            </span>
+          </div>
+        )}
+        {legalProcess.status === 'judgment_won' && (
+          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+            Vitória judicial! Sugerimos aplicar a baixa do título (quitação) na tela de títulos.
+          </p>
+        )}
+        {legalProcess.updated_at && (
+          <p className="text-[11px] text-slate-400">Atualizado em {new Date(legalProcess.updated_at).toLocaleString('pt-BR')}</p>
+        )}
+        <Link
+          href={`/legal${tenantPath}`}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 hover:text-purple-800"
+        >
+          <Scale className="h-3.5 w-3.5" />
+          Ver pipeline jurídico
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function AuditActivityCard({ auditLogs }: { auditLogs: AuditLog[] }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-3">
+    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-        <ShieldAlert className="w-4 h-4 text-emerald-600" />
-        Atividade de Auditoria
+        <MessageSquare className="w-4 h-4 text-emerald-600" />
+        Auditoria (Histórico de Ações)
       </h3>
       {auditLogs.length === 0 ? (
         <p className="text-xs text-slate-500">Nenhuma ação auditada disponível.</p>
@@ -412,13 +497,52 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
     refreshInterval: 4000
   });
 
-  const caseData: Case | null = data?.case || null;
+const caseData: Case | null = data?.case || null;
   const messages: Message[] = useMemo(() => data?.messages || [], [data?.messages]);
   const stage: CollectionStageInfo | null = data?.stage || null;
   const client: Client | null = data?.client || null;
   const contract: ContractWithClient | null = data?.contract || null;
   const financialTitle: FinancialTitle | null = data?.financial_title || null;
   const auditLogs: AuditLog[] = data?.audit_logs || [];
+
+  // Negativação ativa vinculada ao título financeiro do caso (alerta no topo).
+  const negativationUrl = canFetch && financialTitle?.id
+    ? `/api/negativations?limit=1&financial_title_id=${financialTitle.id}${tenantPath}`
+    : null;
+  const { data: negativationData, mutate: mutateNegativation } = useSWR<{
+    negativations: Array<{ id: string; status: string; completed_at?: string | null; notified_at?: string | null; provider?: string | null }>;
+  }>(negativationUrl, fetcher);
+  const activeNegativation = (negativationData?.negativations || []).find(
+    (n) => ['pending_notification', 'notified', 'requested', 'completed'].includes(n.status)
+  ) || null;
+
+  // Protesto ativo vinculado ao título financeiro do caso (alerta no topo).
+  const protestUrl = canFetch && financialTitle?.id
+    ? `/api/protests?limit=1&financial_title_id=${financialTitle.id}${tenantPath}`
+    : null;
+  const { data: protestData } = useSWR<{
+    protests: Array<{ id: string; status: string; completed_at?: string | null; notified_at?: string | null; provider?: string | null }>;
+  }>(protestUrl, fetcher);
+  const activeProtest = (protestData?.protests || []).find(
+    (p) => ['pending_notification', 'notified', 'requested', 'completed'].includes(p.status)
+  ) || null;
+
+  // Processo jurídico vinculado ao caso (seção jurídica no detalhe).
+  const legalUrl = canFetch && caseId ? `/api/legal-processes?limit=1&case_id=${caseId}${tenantPath}` : null;
+  const { data: legalData } = useSWR<{
+    legal_processes: Array<{
+      id: string;
+      status: string;
+      process_type: string;
+      process_number: string | null;
+      court: string | null;
+      filing_date: string | null;
+      lawyer_name: string | null;
+      lawyer_contact: string | null;
+      updated_at: string | null;
+    }>;
+  }>(legalUrl, fetcher);
+  const legalProcess = legalData?.legal_processes?.[0] || null;
 
   // Human intervention input
   const [humanMessage, setHumanMessage] = useState('');
@@ -683,6 +807,60 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Alerta de negativação ativa */}
+        {activeNegativation && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-sm">
+            <div className="flex items-start gap-2 text-sm">
+              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+              <div>
+                <p className="font-semibold text-red-700">
+                  Este título está em processo de negativação
+                  {activeNegativation.status === 'completed' ? ' (negativado)' : ' (em andamento)'}.
+                </p>
+                <p className="text-xs text-red-600 mt-0.5">
+                  {activeNegativation.status === 'pending_notification' && 'Aguardando a notificação prévia ao devedor (CDC Art. 43, 5 dias).'}
+                  {activeNegativation.status === 'notified' && `Devedor notificado em ${activeNegativation.notified_at ? new Date(activeNegativation.notified_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}. Aguardando o prazo legal para registro.`}
+                  {activeNegativation.status === 'requested' && 'Solicitação já enviada ao provedor de negativação.'}
+                  {activeNegativation.status === 'completed' && `Registrada no ${activeNegativation.provider || 'provedor'} — remoção automática ocorre após a quitação.`}
+                </p>
+              </div>
+            </div>
+            <Link
+              href={`/negativations${tenantPath}`}
+              className="shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+            >
+              Ver fila
+            </Link>
+          </div>
+        )}
+
+        {/* Alerta de protesto ativo */}
+        {activeProtest && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 shadow-sm">
+            <div className="flex items-start gap-2 text-sm">
+              <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-orange-600" />
+              <div>
+                <p className="font-semibold text-orange-700">
+                  Este título está em processo de protesto em cartório
+                  {activeProtest.status === 'completed' ? ' (protestado)' : ' (em andamento)'}.
+                </p>
+                <p className="text-xs text-orange-600 mt-0.5">
+                  {activeProtest.status === 'pending_notification' && 'Aguardando a intimação prévia ao devedor (Lei 9.492/97, art. 12).'}
+                  {activeProtest.status === 'notified' && `Devedor intimado em ${activeProtest.notified_at ? new Date(activeProtest.notified_at).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—'}. Aguardando o prazo legal para requisição.`}
+                  {activeProtest.status === 'requested' && 'Requisição já enviada ao cartório.'}
+                  {activeProtest.status === 'completed' && `Protestado no ${activeProtest.provider || 'cartório'} — cancelamento automático ocorre após a quitação.`}
+                </p>
+              </div>
+            </div>
+            <Link
+              href={`/protests${tenantPath}`}
+              className="shrink-0 rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-700"
+            >
+              Ver fila
+            </Link>
+          </div>
+        )}
+
         {/* Navigation & Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
@@ -757,13 +935,32 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
                 </div>
               </div>
 
-              <div className="shrink-0 bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-right">
+              <div className="flex items-center gap-2 shrink-0">
+                {typeof caseData.propensity_score === 'number' && caseData.propensity_score !== null && (
+                  <div className="bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-right">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
+                      Propensão a pagar
+                    </span>
+                    <span className={`text-xl font-extrabold ${
+                      caseData.propensity_score >= 0.7
+                        ? 'text-emerald-400'
+                        : caseData.propensity_score >= 0.4
+                          ? 'text-amber-400'
+                          : 'text-red-400'
+                    }`}>
+                      {(caseData.propensity_score * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                )}
+
+              <div className="bg-white/10 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-right">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 block">
                   Desconto Máximo Efetivo
                 </span>
                 <span className="text-xl font-extrabold text-emerald-400">
                   {stage.effectiveMaxDiscount}%
                 </span>
+              </div>
               </div>
             </div>
           </div>
@@ -925,8 +1122,9 @@ export default function CaseDetailsPage({ params }: { params: Promise<{ id: stri
 
           {/* Sidebar Info & Controls */}
           <div className="space-y-6">
-            <ObligationContextCard caseData={caseData} client={client} contract={contract} financialTitle={financialTitle} />
+<ObligationContextCard caseData={caseData} client={client} contract={contract} financialTitle={financialTitle} />
             <FinancialSummaryCard caseData={caseData} stage={stage} formattedOriginal={formattedOriginal} formattedUpdated={formattedUpdated} />
+            {legalProcess && <LegalProcessCard legalProcess={legalProcess} tenantPath={tenantPath} />}
 
             {/* Debtor Info */}
             <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Biblioteca de templates de mensagens
 type: backend
 complexity: medium

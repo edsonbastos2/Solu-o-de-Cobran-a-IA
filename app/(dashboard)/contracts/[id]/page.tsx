@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import { ArrowLeft, FileText, CheckCircle, CircleDollarSign, XCircle, AlertCircle, Play, RefreshCw } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle, CircleDollarSign, XCircle, AlertCircle, Play, RefreshCw, Pencil } from 'lucide-react';
 import { Client, ContractWithClient, FinancialTitleWithEligibility, FinancialTitlesResponse } from '@/lib/types';
 import { formatPhoneInput, formatCurrency } from '@/lib/utils';
 import { fetcher, fetchWithAuth } from '@/lib/api';
@@ -12,6 +12,7 @@ import { useActiveTenant } from '@/hooks/use-active-tenant';
 import { useTitleBaixaActions } from '@/hooks/use-title-baixa';
 import { TitleStatusBadge } from '@/components/financial-titles/title-status-badge';
 import { PartialPaymentModal } from '@/components/financial-titles/partial-payment-modal';
+import { ContractEditModal } from '@/components/contracts/contract-edit-modal';
 
 type ContractLoadError = 'not_found' | 'network' | 'server';
 
@@ -39,7 +40,7 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
   const router = useRouter();
   const unwrappedParams = use(params);
   const contractId = unwrappedParams.id;
-  const { user, authLoading, tenantId, tenantQuery, tenantPath, needsTenantSelection } = useActiveTenant();
+  const { user, authLoading, tenantId, tenantQuery, tenantPath, needsTenantSelection, isAdmin } = useActiveTenant();
 
   const [contract, setContract] = useState<ContractWithClient | null>(null);
   const [client, setClient] = useState<Client | null>(null);
@@ -49,6 +50,7 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
   const [collectionError, setCollectionError] = useState<CollectionError | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [partialTitle, setPartialTitle] = useState<FinancialTitleWithEligibility | null>(null);
+  const [editingContract, setEditingContract] = useState(false);
 
   const canFetchTitles = !authLoading && Boolean(user) && !needsTenantSelection && Boolean(contractId);
   const titlesUrl = canFetchTitles
@@ -261,12 +263,21 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
           <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
             <FileText className="w-6 h-6" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-semibold text-gray-900">
               Contrato {contract.contract_number ? `#${contract.contract_number}` : ''}
             </h1>
             <p className="text-gray-500 mt-1">{client?.name} • {client?.document}</p>
           </div>
+          {isAdmin && (
+          <button
+            onClick={() => setEditingContract(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-semibold transition-colors"
+          >
+            <Pencil className="w-4 h-4" />
+            Editar
+          </button>
+        )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -561,6 +572,19 @@ export default function ContractDetailsPage({ params }: { params: Promise<{ id: 
         }}
         onClose={() => setPartialTitle(null)}
       />
+
+      {editingContract && contract && (
+        <ContractEditModal
+          contract={contract}
+          tenantPath={tenantPath}
+          onClose={() => setEditingContract(false)}
+          onSaved={(updated) => {
+            setContract((prev) => (prev ? { ...prev, ...updated } : prev));
+            setEditingContract(false);
+          }}
+          onArchived={() => router.push(`/contracts${tenantPath}`)}
+        />
+      )}
     </div>
   );
 }

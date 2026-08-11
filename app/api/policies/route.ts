@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase-server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
 import { validateFields } from '@/lib/api-validate';
+import { recordAuditAction } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
   try {
     if (!getSupabaseServer(req)) return NextResponse.json({ error: 'Supabase não configurado' }, { status: 500 });
 
-    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'admin', new URL(req.url).searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId, userId } = tenantContext.ctx;
 
@@ -62,6 +63,12 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) return serverError('policies POST insert error', error);
+
+    await recordAuditAction(supabase, {
+      tenantId, entityType: 'policy', entityId: data.id,
+      actorUserId: userId, action: 'POLICY_CREATED', after: data,
+      metadata: { source: 'manual' },
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, policy: data }, { status: 201 });
   } catch (error: unknown) {

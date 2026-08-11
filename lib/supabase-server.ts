@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { logger } from '@/lib/logger';
 
 /**
  * Cliente server-side que lê a sessão via cookies (compatível com o client browser e middleware).
@@ -50,7 +51,7 @@ export async function getSupabaseServerWithAdminFallback(req: Request) {
       }
     }
   } catch (err) {
-    console.error('Error checking user in server client:', err);
+    logger.error('Error checking user in server client', undefined, { error: err instanceof Error ? err.message : String(err) });
   }
 
   return serverClient;

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { FileText, Users, FolderKanban, Radio } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { DashboardExportLinks } from '@/components/dashboard-export-links';
 
 const DashboardCharts = dynamic(() => import('@/components/dashboard-charts').then(mod => mod.DashboardCharts));
 
@@ -9,9 +10,12 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
         
-        <div className="mb-8">
-          <h1 className="text-3xl font-semibold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Visão geral do seu sistema de cobranças</p>
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold text-gray-900">Dashboard</h1>
+            <p className="text-gray-500 mt-1">Visão geral do seu sistema de cobranças</p>
+          </div>
+          <DashboardExportLinks />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

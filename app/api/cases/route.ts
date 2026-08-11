@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext, serverError } from '@/lib/api-auth';
 import { calculateUpdatedValue } from '@/lib/finance';
 import { CaseWithRelations, CreateCaseResult } from '@/lib/types';
-import { getSupabaseServer } from '@/lib/supabase-server';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -50,6 +49,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('limit') || '10', 10) || 10));
     const search = (searchParams.get('search') || '').slice(0, 100).trim();
     const status = (searchParams.get('status') || '').slice(0, 50).trim();
+    const sort = (searchParams.get('sort') || 'recent').slice(0, 20).trim();
     const offset = (page - 1) * limit;
 
     let query = ctx.supabase
@@ -63,8 +63,14 @@ export async function GET(req: NextRequest) {
     }
     if (status && status !== 'all') query = query.eq('status', status);
 
+    // Ordenação: 'score' prioriza casos com maior propensão de pagamento.
+    if (sort === 'score') {
+      query = query.order('propensity_score', { ascending: false, nullsFirst: false });
+    } else {
+      query = query.order('created_at', { ascending: false });
+    }
+
     const { data, count, error } = await query
-      .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) return serverError('cases GET error', error);
@@ -110,10 +116,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'financial_title_id é obrigatório e deve ser um UUID válido.', code: 'TITLE_NOT_FOUND' }, { status: 400 });
     }
 
-    const rpcClient = getSupabaseServer(req);
-    if (!rpcClient) return serverError('cases POST RPC client unavailable');
-
-    const { data, error } = await rpcClient.rpc('create_collection_case', {
+    // Usa ctx.supabase para super-admin ter o admin fallback (service role)
+    // consistente com as demais rotas tenant-aware. Antes isto usava
+    // getSupabaseServer(req) — para super-admin isto resultava no client
+    // RLS-scoped, quebrando a consistência do admin fallback.
+    const { data, error } = await ctx.supabase.rpc('create_collection_case', {
       p_financial_title_id: financialTitleId,
       p_tenant_id: ctx.tenantId,
     });

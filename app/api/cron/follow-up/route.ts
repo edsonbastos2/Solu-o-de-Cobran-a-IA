@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendMessage } from '@/lib/messaging';
 import { recordAuditAction } from '@/lib/audit';
+import { logger } from '@/lib/logger';
+import { getActiveQuarantine } from '@/lib/quarantine';
 
 type FollowUpCase = {
   id: string;
@@ -22,7 +24,7 @@ export async function GET(req: NextRequest) {
   // CRON_SECRET é OBRIGATÓRIO. Configurar em .env.
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
-    console.error('CRON_SECRET não configurado. Bloqueando endpoint de cron.');
+    logger.error('CRON_SECRET não configurado. Bloqueando endpoint de cron.');
     return NextResponse.json({ error: 'Servidor mal configurado.' }, { status: 503 });
   }
   const authHeader = req.headers.get('authorization');
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
         .limit(1);
 
       if (lastMessageError) {
-        console.error(`Erro ao buscar mensagens do caso ${c.id}:`, lastMessageError);
+        logger.error('Erro ao buscar mensagens do caso', { tenantId: c.tenant_id }, { caseId: c.id, error: lastMessageError.message });
         continue;
       }
 
@@ -71,6 +73,16 @@ export async function GET(req: NextRequest) {
           const hoursSinceLastMessage = (currentTime - messageTime) / (1000 * 60 * 60);
 
           if (hoursSinceLastMessage >= 24) {
+            // GUARD DE QUARENTENA (tarefa 11): casos sob quarentena ativa
+            // (approved/permanent_block, nao expirada) NAO recebem follow-up
+            // automatizado. Mantem conformidade com pedido de nao contato
+            // (CDC Art. 42 § único) e bloqueio por litigio/falecimento.
+            const quarantine = await getActiveQuarantine(supabase, c.id, c.tenant_id);
+            if (quarantine) {
+              logger.info('[cron/follow-up] caso em quarentena, skip', { tenantId: c.tenant_id, caseId: c.id }, { quarantineStatus: quarantine.status, reason: quarantine.reason });
+              continue;
+            }
+
             const firstName = (c.name || '').split(' ')[0] || 'cliente';
             const followUpText = `Olá, ${firstName}! Tudo bem? Estou passando para lembrar da nossa proposta. Podemos continuar a negociação? Qualquer dúvida estou à disposição.`;
 
@@ -79,7 +91,7 @@ export async function GET(req: NextRequest) {
                 const destination = c.telegram_chat_id || c.phone;
                 if (!destination) continue;
                 await sendMessage(destination, followUpText, c.user_id ?? undefined).catch(err => {
-                  console.error(`Erro ao enviar follow-up para ${destination}:`, err);
+                  logger.error('Erro ao enviar follow-up', { tenantId: c.tenant_id, caseId: c.id }, { error: err instanceof Error ? err.message : String(err) });
                 });
               }
 
@@ -109,7 +121,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, followedUp: followUpsSent });
   } catch (error: unknown) {
-    console.error('Cron Error:', error);
+    logger.error('Cron follow-up error', undefined, { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Erro interno do servidor.' }, { status: 500 });
   }
 }

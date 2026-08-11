@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Negativação (Serasa/SPC/Boa Vista)
 type: backend
 complexity: high

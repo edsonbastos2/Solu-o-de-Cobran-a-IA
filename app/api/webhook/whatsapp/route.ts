@@ -4,6 +4,7 @@ import { processChat } from '@/lib/agent';
 import { rateLimit } from '@/lib/rate-limit';
 import { resolveWebhookTenant } from '@/lib/webhook-tenant';
 import { recordAuditAction } from '@/lib/audit';
+import { logger } from '@/lib/logger';
 
 // Normaliza telefone para dígitos sem o código 55 do Brasil.
 function normalizePhone(phone?: string): string | null {
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
     // 1. Verificação de segredo do webhook (header X-Webhook-Secret)
     const webhookSecret = process.env.WEBHOOK_SECRET;
     if (!webhookSecret) {
-      console.error('WEBHOOK_SECRET não configurado. Bloqueando webhook.');
+      logger.error('WEBHOOK_SECRET não configurado. Bloqueando webhook.');
       return NextResponse.json({ error: 'Servidor mal configurado' }, { status: 503 });
     }
     const incomingSecret = req.headers.get('x-webhook-secret');
@@ -55,13 +56,13 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = getSupabaseAdmin();
     if (!supabaseAdmin) {
-      console.error('Supabase admin não configurado.');
+      logger.error('Supabase admin não configurado.');
       return NextResponse.json({ ok: true });
     }
 
     const tenantId = await resolveWebhookTenant(supabaseAdmin, { instanceId: body.instanceId });
     if (!tenantId) {
-      console.warn('[webhook/whatsapp] tenant não resolvido', { instanceId: body.instanceId || null });
+      logger.warn('[webhook/whatsapp] tenant não resolvido', undefined, { instanceId: body.instanceId || null });
       return NextResponse.json({ ok: true, ignored: 'tenant_unresolved' });
     }
 
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
     // 5. Match de caso por telefone (match exato após normalização)
     const normalized = normalizePhone(from);
     if (!normalized) {
-      console.warn('Telefone inválido, ignorando:', from);
+      logger.warn('Telefone inválido, ignorando', undefined, { from });
       return NextResponse.json({ ok: true });
     }
 
@@ -125,15 +126,15 @@ export async function POST(req: NextRequest) {
 
     // Dispara a lógica de chat com rate limiting por telefone (evita abuso)
     const rlKey = `wa:${normalized}`;
-    if (!rateLimit(rlKey, 5, 60_000)) {
-      console.warn('Rate limit webhook excedido para', normalized);
+    if (!(await rateLimit(rlKey, 5, 60_000))) {
+      logger.warn('Rate limit webhook excedido', undefined, { phone: normalized });
       return NextResponse.json({ ok: true, rateLimited: true });
     }
     const result = await processChat(currentCase.id, messageText, supabaseAdmin, tenantId);
 
     return NextResponse.json({ ok: true, newStatus: result.newStatus });
   } catch (error) {
-    console.error('Z-API Webhook Error:', error);
+    logger.error('Z-API Webhook Error', undefined, { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

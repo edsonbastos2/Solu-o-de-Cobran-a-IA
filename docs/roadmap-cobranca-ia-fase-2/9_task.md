@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Protesto em cartório
 type: backend
 complexity: high

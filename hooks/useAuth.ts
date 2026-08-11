@@ -16,10 +16,13 @@ export type UserProfile = {
   zapi_instance?: string | null;
 };
 
+export type TenantRole = 'owner' | 'admin' | 'member';
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [role, setRole] = useState<TenantRole | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,18 +40,31 @@ export function useAuth() {
           .eq('id', userId)
           .single();
         setProfile(data);
+        const { data: membership } = await client
+          .from('tenant_members')
+          .select('role')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (membership?.role) {
+          const r = String(membership.role).toLowerCase();
+          setRole(r === 'owner' || r === 'admin' || r === 'member' ? r : 'member');
+        }
       } catch (error: unknown) {
         console.error('Error fetching profile:', error);
       }
     };
 
-    // Get initial session
+// Get initial session
     client.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id).finally(() => setLoading(false));
       } else {
+        setRole(null);
         setLoading(false);
       }
     });
@@ -61,6 +77,7 @@ export function useAuth() {
         fetchProfile(session.user.id).finally(() => setLoading(false));
       } else {
         setProfile(null);
+        setRole(null);
         setLoading(false);
       }
     });
@@ -70,6 +87,6 @@ export function useAuth() {
     };
   }, []);
 
-  return { user, profile, session, loading, isConfigured: isSupabaseConfigured };
+  return { user, profile, role, session, loading, isConfigured: isSupabaseConfigured };
 }
 

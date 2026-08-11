@@ -28,7 +28,7 @@ type AppSidebarProps = {
 
 export function AppSidebar({ collapsible = 'icon' }: AppSidebarProps) {
   const pathname = usePathname();
-  const { user, profile, tenantPath } = useActiveTenant();
+  const { user, profile, tenantPath, isAdmin } = useActiveTenant();
   const { isMobile, state, setOpenMobile } = useSidebar();
 
   const isSuperAdmin = profile?.is_super_admin === true;
@@ -60,7 +60,11 @@ export function AppSidebar({ collapsible = 'icon' }: AppSidebarProps) {
   const sections = navConfig
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => !item.adminOnly || isSuperAdmin),
+      items: section.items.filter((item) => {
+        if (item.adminOnly) return isSuperAdmin;
+        if (item.tenantAdminOnly) return isAdmin;
+        return true;
+      }),
     }))
     .filter((section) => section.items.length > 0);
 

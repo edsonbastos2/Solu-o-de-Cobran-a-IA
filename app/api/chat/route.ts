@@ -22,6 +22,9 @@ export async function POST(req: NextRequest) {
     if (message === 'Caso não encontrado') {
       return NextResponse.json({ error: message }, { status: 404 });
     }
+    if (message.toLowerCase().includes('quarentena')) {
+      return NextResponse.json({ error: message }, { status: 403 });
+    }
     return serverError('chat error', error);
   }
 }

@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    const query = supabase
+const query = supabase
       .from('contracts')
       .select(`
         id,
@@ -60,6 +60,10 @@ export async function GET(req: NextRequest) {
         clients (name, document)
       `, { count: 'exact' })
       .eq('tenant_id', ctx.tenantId);
+
+    if (searchParams.get('include_archived') !== 'true') {
+      query.is('archived_at', null);
+    }
 
     const { data, error, count } = await query
       .order('created_at', { ascending: false })

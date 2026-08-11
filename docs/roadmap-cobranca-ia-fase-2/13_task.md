@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Importação em massa CSV/XLSX
 type: backend
 complexity: medium

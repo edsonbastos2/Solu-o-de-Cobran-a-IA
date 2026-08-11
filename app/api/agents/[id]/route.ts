@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireRole, serverError } from '@/lib/api-auth';
+import { recordAuditAction } from '@/lib/audit';
 
 export async function PUT(
   req: NextRequest,
@@ -9,9 +10,17 @@ export async function PUT(
     const { id } = await params;
     const body = await req.json();
 
-    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'admin', new URL(req.url).searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
-    const { supabase, tenantId } = tenantContext.ctx;
+    const { supabase, tenantId, userId, role } = tenantContext.ctx;
+
+    // Captura estado anterior para auditoria
+    const { data: before } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
 
     const {
       name,
@@ -53,6 +62,13 @@ export async function PUT(
 
     if (error) return serverError('agents PUT update error', error);
 
+    await recordAuditAction(supabase, {
+      tenantId, entityType: 'agent', entityId: id,
+      actorUserId: userId, actorRole: role,
+      action: 'AGENT_UPDATED', before, after: data,
+      metadata: { source: 'manual' },
+    }).catch(() => {});
+
     return NextResponse.json({ agent: data });
   } catch (error: unknown) {
     return serverError('agents PUT exception', error);
@@ -66,9 +82,16 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'admin', new URL(req.url).searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
-    const { supabase, tenantId } = tenantContext.ctx;
+    const { supabase, tenantId, userId, role } = tenantContext.ctx;
+
+    const { data: before } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
 
     const { error } = await supabase
       .from('agents')
@@ -77,6 +100,12 @@ export async function DELETE(
       .eq('tenant_id', tenantId);
 
     if (error) return serverError('agents DELETE error', error);
+
+    await recordAuditAction(supabase, {
+      tenantId, entityType: 'agent', entityId: id,
+      actorUserId: userId, actorRole: role,
+      action: 'AGENT_DELETED', before,
+    }).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendMessage } from '@/lib/messaging';
 import { requireTenantContext, serverError } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
+import { getActiveQuarantine } from '@/lib/quarantine';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 
@@ -64,6 +65,14 @@ export async function POST(req: NextRequest) {
 
     if (caseData.status !== 'not_started') {
       return NextResponse.json({ error: "Este caso já foi iniciado." }, { status: 400 });
+    }
+
+    // Guard de quarentena: caso em quarentena não inicia negociação automatizada.
+    const quarantine = await getActiveQuarantine(ctx.supabase, caseId, ctx.tenantId);
+    if (quarantine) {
+      return NextResponse.json({
+        error: `Caso em quarentena (${quarantine.status}): negociação bloqueada. Motivo: ${quarantine.reason || 'não informado'}.`,
+      }, { status: 409 });
     }
 
     // Fetch AI configuration from user profile (via RPC com chaves descriptografadas)

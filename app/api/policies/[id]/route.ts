@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireRole, serverError } from '@/lib/api-auth';
 import { validateFields } from '@/lib/api-validate';
+import { recordAuditAction } from '@/lib/audit';
 
 export async function PUT(
   req: NextRequest,
@@ -10,12 +11,19 @@ export async function PUT(
     const { id } = await params;
     const body = await req.json();
 
-    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'admin', new URL(req.url).searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
-    const { supabase, tenantId } = tenantContext.ctx;
+    const { supabase, tenantId, userId, role } = tenantContext.ctx;
 
     const validation = validateFields(body, [{ name: 'name', type: 'string' }]);
     if (validation) return validation;
+
+    const { data: before } = await supabase
+      .from('collection_policies')
+      .select('*')
+      .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
 
     const { data, error } = await supabase
       .from('collection_policies')
@@ -36,6 +44,13 @@ export async function PUT(
       .single();
 
     if (error) return serverError('policies PUT update error', error);
+
+    await recordAuditAction(supabase, {
+      tenantId, entityType: 'policy', entityId: id,
+      actorUserId: userId, actorRole: role,
+      action: 'POLICY_UPDATED', before, after: data,
+      metadata: { source: 'manual' },
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, policy: data });
   } catch (error: unknown) {

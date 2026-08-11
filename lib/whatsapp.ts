@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getSupabaseAdmin } from './supabase-admin';
+import { logger } from './logger';
 
 export async function sendWhatsAppMessage(to: string, message: string, userId?: string) {
   let instanceId = process.env.ZAPI_INSTANCE_ID;
@@ -30,14 +31,14 @@ export async function sendWhatsAppMessage(to: string, message: string, userId?: 
   }
 
   if (!instanceId || !token) {
-    console.warn("Z-API credentials missing. Message not sent.");
+    logger.warn("Z-API credentials missing. Message not sent.", { userId });
     return false;
   }
 
   // Validação básica de telefone brasileiro (apenas dígitos, 10-13 chars)
   let formattedPhone = to.replace(/\D/g, '');
   if (formattedPhone.length < 10 || formattedPhone.length > 13) {
-    console.warn("Invalid phone number format, not sending:", to);
+    logger.warn("Invalid phone number format, not sending.", { userId }, { to });
     return false;
   }
   if (!formattedPhone.startsWith('55')) {
@@ -66,13 +67,13 @@ export async function sendWhatsAppMessage(to: string, message: string, userId?: 
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error("Failed to send Z-API message:", errorData);
+      logger.error("Failed to send Z-API message", { userId }, { status: response.status, body: errorData.slice(0, 300) });
       return false;
     }
 
     return true;
   } catch (error) {
-    console.error("Error sending Z-API message:", error);
+    logger.error("Error sending Z-API message", { userId }, { error: error instanceof Error ? error.message : String(error) });
     return false;
   }
 }

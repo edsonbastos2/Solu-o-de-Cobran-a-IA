@@ -10,7 +10,8 @@ import {
   AlertCircle,
   RefreshCw,
   CheckCircle,
-  Eye
+  Eye,
+  FileDown
 } from 'lucide-react';
 import { Pagination } from '@/components/pagination';
 import { NegotiationWithRelations, NegotiationsListResponse } from '@/lib/types';
@@ -63,14 +64,24 @@ export default function NegotiationsPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => mutate()}
-            className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
-            title="Atualizar lista"
-            aria-label="Atualizar lista de acordos"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-3">
+            <a
+              href={`/api/reports/agreements.csv?${tenantQuery ? `${tenantQuery}&` : ''}status=${statusFilter}`}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-colors shadow-sm text-xs font-semibold"
+              title="Exportar acordos (CSV)"
+            >
+              <FileDown className="w-4 h-4 text-emerald-600" />
+              Exportar CSV
+            </a>
+            <button
+              onClick={() => mutate()}
+              className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
+              title="Atualizar lista"
+              aria-label="Atualizar lista de acordos"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">

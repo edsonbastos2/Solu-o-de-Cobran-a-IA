@@ -1,5 +1,5 @@
 ---
-status: pending
+status: implemented
 title: Exportação de relatórios CSV/PDF
 type: backend
 complexity: medium
