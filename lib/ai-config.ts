@@ -161,7 +161,7 @@ function pickFromRow(
   if (!apiKey) return null;
   return {
     provider,
-    model: isValidModelFor(provider, row.model),
+    model: isValidModelFor(provider, row.model, bucket),
     apiKey,
     ollamaBaseUrl,
   };
@@ -242,7 +242,7 @@ export async function resolveAIConfig(opts: {
 
   for (const step of chain) {
     if (!step.row) continue;
-    const picked = pickFromRow(step.row);
+    const picked = pickFromRow(step.row, bucket);
     if (!picked) continue;
     const resolved: AIResolved = {
       provider: picked.provider,
