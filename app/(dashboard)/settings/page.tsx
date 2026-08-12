@@ -1,15 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, AlertTriangle, Bot, Send } from 'lucide-react';
+import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, AlertTriangle, Bot, Send, Building2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneInput } from '@/lib/utils';
 import { CheckCircle2 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
+import { TenantAiConfigPanel } from '@/components/tenant-ai-config-panel';
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'ai'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'ai' | 'tenant'>('profile');
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -93,13 +94,13 @@ export default function SettingsPage() {
     try {
       // Envia apenas os segredos que o usuário preencheu neste formulário;
       // campos vazios NÃO são enviados (undefined) para não sobrescrever os salvos.
+      // NOTE: a configuração de IA por-usuário (ai_provider/ai_model/keys) foi
+      // migrada para o tenant e passou a ser read-only nesta aba. Esses campos
+      // não são mais enviados para /api/settings — edite-os em "Configurações do Tenant".
       const payload: Record<string, unknown> = {
         name, phone,
         zapi_instance: zapiInstance,
         messaging_provider: messagingProvider,
-        ai_provider: aiProvider,
-        ai_model: aiModel,
-        ollama_base_url: ollamaUrl,
       };
       if (zapiKey !== '') payload.zapi_key = zapiKey;
       if (zapiClientToken !== '') payload.zapi_client_token = zapiClientToken;
@@ -151,12 +152,19 @@ export default function SettingsPage() {
               <User className="w-4 h-4 shrink-0" />
               Perfil e Integração
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('ai')}
               className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors text-left ${activeTab === 'ai' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:bg-white/5 hover:text-slate-300 border border-transparent'}`}
             >
               <Bot className="w-4 h-4 shrink-0" />
               Modelos de IA
+            </button>
+            <button
+              onClick={() => setActiveTab('tenant')}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors text-left ${activeTab === 'tenant' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:bg-white/5 hover:text-slate-300 border border-transparent'}`}
+            >
+              <Building2 className="w-4 h-4 shrink-0" />
+              Configurações do Tenant
             </button>
             <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-300 font-medium text-sm transition-colors text-left border border-transparent">
               <Bell className="w-4 h-4 shrink-0" />
@@ -172,6 +180,9 @@ export default function SettingsPage() {
                 <p>{error}</p>
               </div>
             )}
+            {activeTab === 'tenant' ? (
+              <TenantAiConfigPanel />
+            ) : (
             <form onSubmit={handleSave}>
               {activeTab === 'profile' && (
                 <>
@@ -337,14 +348,20 @@ export default function SettingsPage() {
                     Modelos de Inteligência Artificial
                   </h2>
                   <p className="text-sm text-slate-500 mb-6">Escolha o provedor e modelo de IA que deseja utilizar nas negociações. Adicione suas chaves de API caso não queira usar a chave global do sistema.</p>
+
+                  <div className="mb-6 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 p-4 rounded-xl text-sm flex items-start">
+                    <AlertTriangle className="w-5 h-5 mr-3 shrink-0 mt-0.5" />
+                    <p>Esta configuração de IA foi migrada para o tenant e agora é somente leitura. Edite o provedor, modelo e chaves em <strong className="font-semibold">&ldquo;Configurações do Tenant&rdquo;</strong>.</p>
+                  </div>
                   
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                          <label htmlFor="ai-provider" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Provedor de IA</label>
-                        <select 
+<select
                            id="ai-provider"
                            value={aiProvider}
+                          disabled
                           onChange={(e) => {
                             const provider = e.target.value;
                             setAiProvider(provider);
@@ -362,19 +379,21 @@ export default function SettingsPage() {
                       </div>
                       <div>
                          <label htmlFor="ai-model" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">Modelo</label>
-                        {aiProvider === 'ollama' || aiProvider === 'openrouter' ? (
-                          <input 
-                             id="ai-model"
-                             type="text"
+{aiProvider === 'ollama' || aiProvider === 'openrouter' ? (
+                          <input
+                            id="ai-model"
+                            type="text"
+                            disabled
                             value={aiModel}
                             onChange={(e) => setAiModel(e.target.value)}
                             placeholder={aiProvider === 'openrouter' ? "Ex: meta-llama/llama-3-8b-instruct:free" : "Ex: llama3"}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
                         ) : (
-                           <select
-                             id="ai-model"
-                            value={aiModel}
+<select
+                              id="ai-model"
+                             value={aiModel}
+                            disabled
                             onChange={(e) => setAiModel(e.target.value)}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           >
@@ -417,10 +436,11 @@ export default function SettingsPage() {
                             {secrets.opencode_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                             id="opencode-api-key"
-                             type="password"
-                            value={opencodeKey}
-                            onChange={(e) => setOpencodeKey(e.target.value)}
+id="opencode-api-key"
+                              type="password"
+                             disabled
+                             value={opencodeKey}
+                             onChange={(e) => setOpencodeKey(e.target.value)}
                             placeholder={secrets.opencode_api_key_set ? '•••••• (preencha para substituir)' : 'sk-...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
@@ -433,10 +453,11 @@ export default function SettingsPage() {
                             {secrets.gemini_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                             id="gemini-api-key"
-                             type="password"
-                            value={geminiKey}
-                            onChange={(e) => setGeminiKey(e.target.value)}
+id="gemini-api-key"
+                              type="password"
+                             disabled
+                             value={geminiKey}
+                             onChange={(e) => setGeminiKey(e.target.value)}
                             placeholder={secrets.gemini_api_key_set ? '•••••• (preencha para substituir)' : 'AIzaSy...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
@@ -449,10 +470,11 @@ export default function SettingsPage() {
                             {secrets.openai_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                             id="openai-api-key"
-                             type="password"
-                            value={openaiKey}
-                            onChange={(e) => setOpenaiKey(e.target.value)}
+id="openai-api-key"
+                              type="password"
+                             disabled
+                             value={openaiKey}
+                             onChange={(e) => setOpenaiKey(e.target.value)}
                             placeholder={secrets.openai_api_key_set ? '•••••• (preencha para substituir)' : 'sk-...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
@@ -465,10 +487,11 @@ export default function SettingsPage() {
                             {secrets.anthropic_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                             id="anthropic-api-key"
-                             type="password"
-                            value={anthropicKey}
-                            onChange={(e) => setAnthropicKey(e.target.value)}
+id="anthropic-api-key"
+                              type="password"
+                             disabled
+                             value={anthropicKey}
+                             onChange={(e) => setAnthropicKey(e.target.value)}
                             placeholder={secrets.anthropic_api_key_set ? '•••••• (preencha para substituir)' : 'sk-ant-...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
@@ -481,10 +504,11 @@ export default function SettingsPage() {
                             {secrets.openrouter_api_key_set && <span className="ml-2 inline-flex items-center text-emerald-400 normal-case tracking-normal"><CheckCircle2 className="w-3 h-3 mr-1" />salvo</span>}
                           </label>
                           <input
-                             id="openrouter-api-key"
-                             type="password"
-                            value={openrouterKey}
-                            onChange={(e) => setOpenrouterKey(e.target.value)}
+id="openrouter-api-key"
+                              type="password"
+                             disabled
+                             value={openrouterKey}
+                             onChange={(e) => setOpenrouterKey(e.target.value)}
                             placeholder={secrets.openrouter_api_key_set ? '•••••• (preencha para substituir)' : 'sk-or-v1-...'}
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
@@ -495,10 +519,11 @@ export default function SettingsPage() {
                         <div>
                            <label htmlFor="ollama-url" className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">URL Base do Ollama</label>
                           <input 
-                             id="ollama-url"
-                             type="text"
-                            value={ollamaUrl}
-                            onChange={(e) => setOllamaUrl(e.target.value)}
+id="ollama-url"
+                              type="text"
+                             disabled
+                             value={ollamaUrl}
+                             onChange={(e) => setOllamaUrl(e.target.value)}
                             placeholder="http://localhost:11434"
                             className="w-full bg-[#0e1014] border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
                           />
@@ -510,8 +535,9 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-4">
+              {/* Actions — só na aba perfil (a aba IA é read-only; a aba Tenant tem seus próprios botões por bucket) */}
+              {activeTab === 'profile' && (
+                <div className="flex items-center justify-end gap-4">
                 {saved && (
                   <span className="text-emerald-400 text-sm font-medium flex items-center">
                     <Save className="w-4 h-4 mr-1.5" />
@@ -532,8 +558,10 @@ export default function SettingsPage() {
                     </>
                   )}
                 </button>
-              </div>
+                </div>
+              )}
             </form>
+            )}
           </div>
         </div>
       </main>

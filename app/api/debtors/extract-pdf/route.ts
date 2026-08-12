@@ -1,7 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { rateLimit } from '@/lib/rate-limit';
+import { recordAuditAction } from '@/lib/audit';
+import { logger } from '@/lib/logger';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { resolveAIConfig } from '@/lib/ai-config';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go';
+const ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
 const EXTRACTION_PROMPT = `Analise este documento (PDF ou Imagem) e extraia todas as informações de devedores / clientes com débitos.
 Retorne uma lista JSON com os devedores encontrados.
@@ -18,14 +25,34 @@ Mantenha a lista o mais precisa e completa possível.
 
 Retorne um JSON no formato: { "debtors": [ { "name": "", "phone": "", "email": "", "document": "", "address": "", "notes": "" } ] }`;
 
-const MODEL = 'minimax-m3';
-
 export async function POST(req: NextRequest) {
+  // Hardening (ADR-005): antes este endpoint era público e consumia
+  // OPENCODE_API_KEY do servidor sem sessão. Agora exige sessão + contexto
+  // de tenant, e resolve a config de extração do tenant ativo.
+  const tctx = await requireTenantContext(req);
+  if ('response' in tctx) return tctx.response;
+  const { tenantId, userId } = tctx.ctx;
+
+  // Rate limit por usuário: 10 extrações/minuto (mesmo padrão de extract-contract).
+  const allowed = await rateLimit(`extract-pdf-debtor:${userId}`, 10, 60_000);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Limite de extrações por minuto excedido. Tente novamente em instantes.' },
+      { status: 429 }
+    );
+  }
+
   try {
-    const apiKey = process.env.OPENCODE_API_KEY;
+    const admin = getSupabaseAdmin();
+    const ai = await resolveAIConfig({
+      client: admin ?? tctx.ctx.supabase,
+      tenantId,
+      bucket: 'pdf_extraction',
+    });
+    const apiKey = ai.apiKey;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "Chave de API do OpenCode não configurada no servidor (OPENCODE_API_KEY)." },
+        { error: "Chave de API não configurada para extração de PDF. Configure o bucket 'Extração de PDF' do tenant ou o padrão de sistema." },
         { status: 500 }
       );
     }
@@ -72,10 +99,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const anthropic = new Anthropic({ apiKey, baseURL: OPENCODE_BASE_URL });
+    // O cliente de extração permanece single-SDK (Anthropic); apenas a baseURL
+    // alterna entre o gateway OpenCode e a API nativa da Anthropic, conforme o
+    // provedor resolvido. O validador de escrita (tasks 03/04) já restringe o
+    // bucket pdf_extraction a provedores vision-capable (opencode/anthropic/
+    // openai/gemini); opencode + minimax-m3 rodam via gateway OpenCode.
+    const baseURL = ai.provider === 'anthropic' ? ANTHROPIC_BASE_URL : OPENCODE_BASE_URL;
+    const anthropic = new Anthropic({ apiKey, baseURL });
 
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model: ai.model,
       system: EXTRACTION_PROMPT,
       messages: [
         {
@@ -107,15 +140,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Auditoria tenant-scoped da extração de devedores.
+    try {
+      await recordAuditAction(admin ?? tctx.ctx.supabase, {
+        tenantId,
+        entityType: 'debtor_extraction',
+        entityId: 'unknown',
+        actorUserId: userId,
+        action: 'DEBTORS_EXTRACTED',
+        metadata: {
+          file_name: file.name || null,
+          file_size: file.size || null,
+          model: ai.model,
+          provider: ai.provider,
+          source: ai.source,
+          debtors_count: extractedData.length,
+        },
+      }).catch(() => { /* auditoria não bloqueia extração */ });
+    } catch { /* no-op */ }
+
     return NextResponse.json({
       success: true,
       debtors: extractedData,
     });
   } catch (err: any) {
-    console.error("Erro ao extrair PDF via OpenCode:", err);
-    return NextResponse.json(
-      { error: err.message || "Erro interno ao processar o arquivo PDF/imagem." },
-      { status: 500 }
-    );
+    logger.error('Erro ao extrair PDF', { tenantId, userId }, { error: err instanceof Error ? err.message : String(err) });
+    return serverError('extract-pdf error', err, true);
   }
 }

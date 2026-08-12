@@ -32,7 +32,7 @@ export function AppSidebar({ collapsible = 'icon' }: AppSidebarProps) {
   const { isMobile, state, setOpenMobile } = useSidebar();
 
   const isSuperAdmin = profile?.is_super_admin === true;
-  const withTenant = (href: string) => (href === '/admin/users' ? href : `${href}${tenantPath}`);
+  const withTenant = (href: string) => (href === '/admin/users' || href === '/admin/ai-defaults' ? href : `${href}${tenantPath}`);
 
   const isActive = (href: string, exact: boolean) => {
     if (exact) return pathname === href;

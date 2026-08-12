@@ -3,47 +3,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getSupabaseServer } from '@/lib/supabase-server';
 import { requireUser } from '@/lib/api-auth';
+import { resolveAIConfig } from '@/lib/ai-config';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
-
-const DEFAULT_MODELS: Record<string, string> = {
-  opencode: 'deepseek-v4-flash',
-  gemini: 'gemini-3.5-flash',
-  openai: 'gpt-4o-mini',
-  anthropic: 'claude-3-haiku',
-  openrouter: 'meta-llama/llama-3-8b-instruct:free',
-  ollama: 'llama3',
-};
-
-type HelpChatProfile = {
-  ai_provider?: string | null;
-  ai_model?: string | null;
-  ollama_base_url?: string | null;
-} & Partial<Record<'opencode_api_key' | 'gemini_api_key' | 'openai_api_key' | 'anthropic_api_key' | 'openrouter_api_key', string | null>>;
-
-const API_KEY_FIELDS: Record<string, keyof HelpChatProfile> = {
-  opencode: 'opencode_api_key',
-  gemini: 'gemini_api_key',
-  openai: 'openai_api_key',
-  anthropic: 'anthropic_api_key',
-  openrouter: 'openrouter_api_key',
-};
-
-const ENV_KEY_FIELDS: Record<string, string> = {
-  opencode: 'OPENCODE_API_KEY',
-  gemini: 'GEMINI_API_KEY',
-  openai: 'OPENAI_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY',
-};
-
-const VALID_MODELS: Record<string, string[]> = {
-  opencode: ['deepseek-v4-pro', 'deepseek-v4-flash'],
-  gemini: ['gemini-3.5-flash', 'gemini-3.1-pro'],
-  openai: ['gpt-4o', 'gpt-4o-mini'],
-  anthropic: ['claude-3-5-sonnet', 'claude-3-haiku'],
-};
 
 const SYSTEM_INSTRUCTION = `Você é o assistente virtual (Agente Especialista) de uma plataforma SaaS multiempresa de recuperação de crédito baseada em Inteligência Artificial, chamada CobrançaIA.
 
@@ -107,13 +71,6 @@ function normalizeMessages(messages: ChatMessage[]) {
     role: message.role === 'model' || message.role === 'assistant' ? 'assistant' : 'user',
     content: message.content,
   }));
-}
-
-function resolveModel(provider: string, model: string | null | undefined) {
-  if (model && (!VALID_MODELS[provider] || VALID_MODELS[provider].includes(model))) {
-    return model;
-  }
-  return DEFAULT_MODELS[provider] || DEFAULT_MODELS.opencode;
 }
 
 async function generateAssistantResponse(
@@ -193,30 +150,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid messages format" }, { status: 400 });
     }
 
-    let provider = 'opencode';
-    let model = DEFAULT_MODELS.opencode;
-    let apiKey = process.env.OPENCODE_API_KEY || '';
-    let ollamaBaseUrl = 'http://localhost:11434';
+// Resolução centralizada de IA (ADR-003): bucket assistant do tenant do
+    // usuário ativo. Em demo mode (sem Supabase) degrada para o fallback
+    // hardcoded (opencode + OPENCODE_API_KEY).
     const admin = getSupabaseAdmin();
-
-    if (admin) {
-      const { data: profileKeys, error: keysError } = await admin.rpc('get_user_ai_keys', {
-        p_user_id: auth.ctx.userId
-      });
-
-      if (keysError) {
-        console.error('[help-chat] failed to load user AI key:', keysError);
-      } else if (profileKeys?.[0]) {
-         const profile = profileKeys[0] as HelpChatProfile;
-        provider = profile.ai_provider || provider;
-        model = resolveModel(provider, profile.ai_model);
-        ollamaBaseUrl = profile.ollama_base_url || ollamaBaseUrl;
-
-        const keyField = API_KEY_FIELDS[provider];
-        const envField = ENV_KEY_FIELDS[provider];
-         apiKey = (keyField ? profile[keyField] : '') || (envField ? process.env[envField] : '') || '';
-      }
+    const serverClient = getSupabaseServer(req);
+    let tenantId = auth.ctx.currentTenantId;
+    if (!tenantId && (admin || serverClient)) {
+      const resolverForMembership = admin ?? serverClient!;
+      const { data: membership } = await resolverForMembership
+        .from('tenant_members')
+        .select('tenant_id')
+        .eq('user_id', auth.ctx.userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      tenantId = (membership as { tenant_id?: string | null } | null)?.tenant_id ?? null;
     }
+    if (!tenantId) {
+      return NextResponse.json(
+        { error: 'Tenant ativo não encontrado. Configure seu tenant antes de usar o assistente.' },
+        { status: 404 }
+      );
+    }
+    const ai = await resolveAIConfig({
+      client: admin ?? serverClient,
+      tenantId,
+      bucket: 'assistant',
+    });
+    const provider = ai.provider;
+    const model = ai.model;
+    const apiKey = ai.apiKey;
+    const ollamaBaseUrl = ai.ollamaBaseUrl;
 
     if (provider !== 'ollama' && !apiKey) {
       return NextResponse.json({

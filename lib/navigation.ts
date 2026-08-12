@@ -1,4 +1,4 @@
-import { Bot, Cpu, FolderKanban, Handshake, LayoutDashboard, Settings, Shield, Users, ShieldAlert, MessageSquareText, FileUp, Ban, Landmark, Scale } from 'lucide-react';
+import { Bot, Cpu, FolderKanban, Handshake, LayoutDashboard, Settings, Shield, Users, ShieldAlert, MessageSquareText, FileUp, Ban, Landmark, Scale, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export type NavItem = {
@@ -43,6 +43,7 @@ export const navConfig: NavSection[] = [
       { label: 'Políticas', href: '/policies', icon: Shield, section: 'configuracao', tenantAdminOnly: true, dataTour: 'policies-nav' },
       { label: 'Configurações', href: '/settings', icon: Settings, section: 'configuracao' },
       { label: 'Painel Admin', href: '/admin/users', icon: Shield, section: 'configuracao', adminOnly: true },
+      { label: 'Padrões de IA', href: '/admin/ai-defaults', icon: Sparkles, section: 'configuracao', adminOnly: true },
     ],
   },
 ];

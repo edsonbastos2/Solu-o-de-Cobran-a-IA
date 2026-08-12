@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
           entityId: c.id,
           actorUserId: null,
           action: 'PROPENSITY_SCORE_RECALCULATED',
-          metadata: { source: 'cron', score: result.score, components: result.components },
+          metadata: { source: 'cron', score: result.score, components: result.factors },
         }).catch((e) => logger.error('Audit score-propensity failed', undefined, { caseId: c.id, error: e instanceof Error ? e.message : String(e) }));
       } catch (err) {
         logger.error('Erro ao calcular propensão de caso', undefined, {

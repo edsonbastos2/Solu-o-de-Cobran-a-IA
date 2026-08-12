@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { resolveAIConfig } from '@/lib/ai-config';
 import { sendMessage } from '@/lib/messaging';
 import { getCollectionStage } from '@/lib/finance';
 import { fetchAgents } from '@/lib/multi-agent';
@@ -298,51 +299,20 @@ Título: ${financialTitle?.external_reference || financialTitle?.installment_num
 Vencimento: ${financialTitle?.due_date || caseData.due_date}
 Status do título: ${financialTitle?.status || 'não informado'}`;
 
-  let aiProvider = 'opencode';
-  let aiModel = 'deepseek-v4-flash';
-  let apiKey = process.env.OPENCODE_API_KEY || '';
-  let ollamaBaseUrl = 'http://localhost:11434';
-
-  if (caseData.user_id) {
-    const admin = getSupabaseAdmin();
-    let profile: AiProfile | null = null;
-    if (admin) {
-      const { data: rpcData, error: rpcErr } = await admin
-        .rpc('get_user_ai_keys', { p_user_id: caseData.user_id });
-      if (!rpcErr && rpcData && rpcData.length > 0) {
-        profile = rpcData[0] as AiProfile;
-      }
-    }
-    if (!profile) {
-      const client = admin || database;
-      const { data } = await client!
-        .from('profiles')
-        .select('*')
-        .eq('id', caseData.user_id)
-        .single();
-       profile = data as AiProfile | null;
-    }
-
-    if (profile) {
-      aiProvider = profile.ai_provider || 'opencode';
-      aiModel = profile.ai_model || (aiProvider === 'opencode' ? 'deepseek-v4-flash' : aiProvider === 'gemini' ? 'gemini-3.5-flash' : aiProvider === 'openai' ? 'gpt-4o-mini' : aiProvider === 'ollama' ? 'llama3' : aiProvider === 'openrouter' ? 'meta-llama/llama-3-8b-instruct:free' : 'claude-3-haiku');
-
-      if (aiProvider === 'opencode') {
-        apiKey = profile.opencode_api_key || process.env.OPENCODE_API_KEY || '';
-      } else if (aiProvider === 'gemini') {
-        apiKey = profile.gemini_api_key || process.env.GEMINI_API_KEY || '';
-      } else if (aiProvider === 'openai') {
-        apiKey = profile.openai_api_key || process.env.OPENAI_API_KEY || '';
-      } else if (aiProvider === 'anthropic') {
-        apiKey = profile.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '';
-      } else if (aiProvider === 'openrouter') {
-        apiKey = profile.openrouter_api_key || process.env.OPENROUTER_API_KEY || '';
-      } else if (aiProvider === 'ollama') {
-        ollamaBaseUrl = profile.ollama_base_url || 'http://localhost:11434';
-        apiKey = 'ollama-no-key';
-      }
-    }
-  }
+  // Resolução centralizada de IA (ADR-003): bucket 'agents' do tenant →
+  // bucket assistant do tenant → default de sistema → fallback hardcoded.
+  // O override de modelo por agente (supervisor/especialista/qualidade) é
+  // aplicado em cada callLLM via `agentRow.model || aiModel`.
+  const admin = getSupabaseAdmin();
+  const ai = await resolveAIConfig({
+    client: admin ?? database,
+    tenantId: resolvedTenantId,
+    bucket: 'agents',
+  });
+  const aiProvider = ai.provider;
+  const aiModel = ai.model;
+  const apiKey = ai.apiKey;
+  const ollamaBaseUrl = ai.ollamaBaseUrl;
 
   if (!apiKey) {
     throw new Error(`Chave de API não configurada para o provedor ${aiProvider}. Configure nas opções (Settings) ou nas variáveis de ambiente.`);

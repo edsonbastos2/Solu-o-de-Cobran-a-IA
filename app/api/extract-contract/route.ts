@@ -4,8 +4,12 @@ import { requireUser, serverError } from '@/lib/api-auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { recordAuditAction } from '@/lib/audit';
 import { logger } from '@/lib/logger';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getSupabaseServer } from '@/lib/supabase-server';
+import { resolveAIConfig } from '@/lib/ai-config';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go';
+const ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 
 const EXTRACTION_PROMPT = `You are an expert lawyer and data extraction assistant. Extract the following information from the contract provided. If a field is not found, leave it empty or null.
 
@@ -32,8 +36,6 @@ Return a JSON with the following fields:
   "forum": "Foro do contrato"
 }`;
 
-const MODEL = 'minimax-m3';
-
 export async function POST(req: NextRequest) {
   // Autenticação obrigatória — antes este endpoint era public, permitindo que
   // qualquer anônimo consumisse a OPENCODE_API_KEY do servidor (custo ilimitado).
@@ -51,13 +53,39 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const apiKey = process.env.OPENCODE_API_KEY;
+    // Resolução centralizada de IA (ADR-003): bucket pdf_extraction do tenant.
+    // extração de contrato pode ocorrer antes da seleção de tenant (onboarding
+    // super-admin); quando não houver tenant ativo, degrada para o default de
+    // sistema → fallback hardcoded (opencode/minimax-m3/OPENCODE_API_KEY).
+    const admin = getSupabaseAdmin();
+    const serverClient = getSupabaseServer(req);
+    let tenantId = currentTenantId;
+    if (!tenantId && (admin || serverClient)) {
+      const membershipClient = admin ?? serverClient!;
+      const { data: membership } = await membershipClient
+        .from('tenant_members')
+        .select('tenant_id')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      tenantId = (membership as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    }
+    const ai = await resolveAIConfig({
+      client: admin ?? serverClient,
+      tenantId: tenantId ?? '',
+      bucket: 'pdf_extraction',
+    });
+    const apiKey = ai.apiKey;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "Chave de API do OpenCode não configurada (OPENCODE_API_KEY)." },
+        { error: "Chave de API não configurada para extração de PDF. Configure o bucket 'Extração de PDF' do tenant ou o padrão de sistema." },
         { status: 500 }
       );
     }
+
+    const baseURL = ai.provider === 'anthropic' ? ANTHROPIC_BASE_URL : OPENCODE_BASE_URL;
 
     const formData = await req.formData();
     const contractText = formData.get("contractText") as string;
@@ -67,7 +95,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "contractText or file is required" }, { status: 400 });
     }
 
-    const anthropic = new Anthropic({ apiKey, baseURL: OPENCODE_BASE_URL });
+    const anthropic = new Anthropic({ apiKey, baseURL });
 
     const userText = contractText || "Extraia os dados deste contrato.";
     const content: Anthropic.Messages.ContentBlockParam[] = [];
@@ -108,7 +136,7 @@ export async function POST(req: NextRequest) {
     content.push({ type: 'text', text: userText });
 
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model: ai.model,
       system: EXTRACTION_PROMPT,
       messages: [{ role: 'user', content }],
       max_tokens: 4096,
@@ -128,9 +156,8 @@ export async function POST(req: NextRequest) {
 
     // Auditoria do uso da chave de IA (prevenção de abuso e rastreabilidade).
     try {
-      const admin = (await import('@/lib/supabase-admin')).getSupabaseAdmin();
       if (admin) {
-        // tenant_id opcional — extracão de contrato pode ocorrer antes da
+        // tenant_id opcional — extração de contrato pode ocorrer antes da
         // seleção do tenant (super-admin onboarding). Auditoria global do ator.
         await recordAuditAction(admin, {
           tenantId: currentTenantId ?? '',
@@ -142,7 +169,9 @@ export async function POST(req: NextRequest) {
             file_name: file?.name || null,
             file_size: file?.size || null,
             has_text: !!contractText,
-            model: MODEL,
+            model: ai.model,
+            provider: ai.provider,
+            source: ai.source,
           },
         }).catch(() => { /* auditoria não bloqueia extração */ });
       }
