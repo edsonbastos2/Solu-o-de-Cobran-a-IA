@@ -25,6 +25,7 @@ export interface BucketValue {
   openai_api_key_set?: boolean;
   anthropic_api_key_set?: boolean;
   openrouter_api_key_set?: boolean;
+  groq_api_key_set?: boolean;
 }
 
 export interface AiBucketEditorProps {

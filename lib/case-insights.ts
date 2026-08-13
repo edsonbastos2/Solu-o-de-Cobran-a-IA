@@ -7,6 +7,7 @@ import { resolveAIConfig } from '@/lib/ai-config';
 import { Case, Message, Negotiation, CaseInsights } from '@/lib/types';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 const MAX_MESSAGES_FOR_LLM = 50;
 
 type AiProfile = {
@@ -217,7 +218,7 @@ REGRAS:
     }
 
     let content = '';
-    if (aiProvider === 'opencode' || aiProvider === 'openai' || aiProvider === 'ollama' || aiProvider === 'openrouter') {
+    if (aiProvider === 'opencode' || aiProvider === 'openai' || aiProvider === 'ollama' || aiProvider === 'openrouter' || aiProvider === 'groq') {
       const openai = new OpenAI({
         apiKey: aiProvider === 'ollama' ? 'ollama' : apiKey,
         baseURL: aiProvider === 'opencode'
@@ -226,7 +227,9 @@ REGRAS:
             ? 'https://openrouter.ai/api/v1'
             : aiProvider === 'ollama'
               ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1`
-              : undefined,
+              : aiProvider === 'groq'
+                ? GROQ_BASE_URL
+                : undefined,
       });
       const response = await openai.chat.completions.create({
         model: aiModel,

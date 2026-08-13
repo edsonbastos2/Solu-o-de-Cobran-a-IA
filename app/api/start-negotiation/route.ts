@@ -9,6 +9,7 @@ import { recordAuditAction } from '@/lib/audit';
 import { getActiveQuarantine } from '@/lib/quarantine';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 
 type AiProfile = {
   ai_provider?: string;
@@ -143,10 +144,21 @@ export async function POST(req: NextRequest) {
           aiText = response.content[0].text;
         }
       } else if (aiProvider === 'ollama' || aiProvider === 'openrouter') {
-        const openai = new OpenAI({ 
-          apiKey: aiProvider === 'openrouter' ? apiKey : 'ollama', 
-          baseURL: aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` 
+        const openai = new OpenAI({
+          apiKey: aiProvider === 'openrouter' ? apiKey : 'ollama',
+          baseURL: aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : `${ollamaBaseUrl.replace(/\/+$/, '')}/v1`
         });
+        const response = await openai.chat.completions.create({
+          model: aiModel,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: 'Gere a primeira mensagem de contato baseada nas instruções.' }
+          ],
+          temperature: 0.3
+        });
+        if (response.choices[0].message.content) aiText = response.choices[0].message.content;
+      } else if (aiProvider === 'groq') {
+        const openai = new OpenAI({ apiKey, baseURL: GROQ_BASE_URL });
         const response = await openai.chat.completions.create({
           model: aiModel,
           messages: [

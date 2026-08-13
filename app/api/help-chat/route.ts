@@ -8,6 +8,7 @@ import { requireUser } from '@/lib/api-auth';
 import { resolveAIConfig } from '@/lib/ai-config';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 
 const SYSTEM_INSTRUCTION = `Você é o assistente virtual (Agente Especialista) de uma plataforma SaaS multiempresa de recuperação de crédito baseada em Inteligência Artificial, chamada CobrançaIA.
 
@@ -121,7 +122,9 @@ async function generateAssistantResponse(
       ? 'https://openrouter.ai/api/v1'
       : provider === 'ollama'
         ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1`
-        : undefined;
+        : provider === 'groq'
+          ? GROQ_BASE_URL
+          : undefined;
   const client = new OpenAI({
     apiKey: provider === 'ollama' ? 'ollama' : apiKey,
     baseURL,

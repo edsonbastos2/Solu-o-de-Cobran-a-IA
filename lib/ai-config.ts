@@ -8,7 +8,9 @@
 //
 // `source='tenant'`  : provedor E chave vieram de um bucket do tenant.
 // `source='system'`  : vieram de uma linha de `system_ai_defaults`.
-// `source='hardcoded'`: fallback final (opencode + OPENCODE_API_KEY).
+// `source='hardcoded'`: fallback final. Buckets assistant/agents caem em
+//   groq + GROQ_API_KEY; pdf_extraction cai em opencode + OPENCODE_API_KEY
+//   (Groq não tem modelo com suporte nativo a documento PDF — só imagem).
 //
 // Consultado uma vez por request e reutilizado pelos call sites. Recebe o
 // client admin (service role) para manter a descriptografia dos segredos
@@ -18,7 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from '@/lib/logger';
 
 export type AIBucket = 'assistant' | 'pdf_extraction' | 'agents';
-export type AIProvider = 'opencode' | 'gemini' | 'openai' | 'anthropic' | 'openrouter' | 'ollama';
+export type AIProvider = 'opencode' | 'gemini' | 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'groq';
 
 export interface AIResolved {
   provider: AIProvider;
@@ -37,6 +39,7 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
   anthropic: 'claude-3-haiku',
   openrouter: 'meta-llama/llama-3-8b-instruct:free',
   ollama: 'llama3',
+  groq: 'llama-3.3-70b-versatile',
 };
 
 export const MODEL_WHITELISTS: Record<AIProvider, string[]> = {
@@ -46,6 +49,7 @@ export const MODEL_WHITELISTS: Record<AIProvider, string[]> = {
   anthropic: ['claude-3-5-sonnet', 'claude-3-haiku'],
   openrouter: ['meta-llama/llama-3-8b-instruct:free'],
   ollama: ['llama3'],
+  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b'],
 };
 
 export const SUPPORTED_PROVIDERS: AIProvider[] = [
@@ -55,10 +59,13 @@ export const SUPPORTED_PROVIDERS: AIProvider[] = [
   'anthropic',
   'openrouter',
   'ollama',
+  'groq',
 ];
 
 // Provedores capazes de visão de documento (ADR-005). `pdf_extraction` só
 // aceita estes; validado no write (tasks 03/04) e espelhado no runtime guard.
+// Groq fica de fora: seu único modelo com visão (qwen/qwen3.6-27b) não lê
+// PDF nativamente (só imagem), e não integra a whitelist de chat acima.
 export const VISION_CAPABLE: Record<AIProvider, boolean> = {
   opencode: true,
   anthropic: true,
@@ -66,6 +73,7 @@ export const VISION_CAPABLE: Record<AIProvider, boolean> = {
   gemini: true,
   openrouter: false,
   ollama: false,
+  groq: false,
 };
 
 // Mapa provedor → campo de segredo no corpo da requisição (UI/API) e no
@@ -77,6 +85,7 @@ export const PROVIDER_API_KEY_FIELD: Record<AIProvider, string> = {
   anthropic: 'anthropic_api_key',
   openrouter: 'openrouter_api_key',
   ollama: 'ollama_api_key',
+  groq: 'groq_api_key',
 };
 
 const ENV_KEY_FIELDS: Record<AIProvider, string | undefined> = {
@@ -86,6 +95,7 @@ const ENV_KEY_FIELDS: Record<AIProvider, string | undefined> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
   ollama: undefined,
+  groq: 'GROQ_API_KEY',
 };
 
 // Modelo vision-capable do gateway OpenCode reservado ao bucket pdf_extraction.
@@ -97,9 +107,9 @@ const ENV_KEY_FIELDS: Record<AIProvider, string | undefined> = {
 const PDF_OPENCODE_VISION_MODEL = 'minimax-m3';
 
 const HARDCODED_MODEL_BY_BUCKET: Record<AIBucket, string> = {
-  assistant: 'deepseek-v4-flash',
+  assistant: DEFAULT_MODELS.groq,
   pdf_extraction: PDF_OPENCODE_VISION_MODEL,
-  agents: 'deepseek-v4-flash',
+  agents: DEFAULT_MODELS.groq,
 };
 
 interface AIRow {
@@ -112,6 +122,7 @@ interface AIRow {
   anthropic_api_key: string | null;
   openrouter_api_key: string | null;
   ollama_base_url: string | null;
+  groq_api_key: string | null;
 }
 
 function isProvider(v: string | null | undefined): v is AIProvider {
@@ -168,11 +179,23 @@ function pickFromRow(
 }
 
 function hardcodedFallback(bucket: AIBucket, agentModelOverride?: string): AIResolved {
+  // pdf_extraction permanece no gateway OpenCode: Groq não tem modelo com
+  // suporte nativo a documento PDF (só imagem), então trocar o default
+  // quebraria upload de PDF. Ver comentário em VISION_CAPABLE acima.
+  if (bucket === 'pdf_extraction') {
+    return {
+      provider: 'opencode',
+      model: HARDCODED_MODEL_BY_BUCKET.pdf_extraction,
+      apiKey: process.env.OPENCODE_API_KEY ?? '',
+      ollamaBaseUrl: 'http://localhost:11434',
+      source: 'hardcoded',
+    };
+  }
   const override = bucket === 'agents' && agentModelOverride ? agentModelOverride : null;
   return {
-    provider: 'opencode',
+    provider: 'groq',
     model: override ?? HARDCODED_MODEL_BY_BUCKET[bucket],
-    apiKey: process.env.OPENCODE_API_KEY ?? '',
+    apiKey: process.env.GROQ_API_KEY ?? '',
     ollamaBaseUrl: 'http://localhost:11434',
     source: 'hardcoded',
   };

@@ -13,7 +13,7 @@ import {
 } from '@/lib/ai-config';
 
 const BUCKETS: AIBucket[] = ['assistant', 'pdf_extraction', 'agents'];
-const SECRET_PROVIDERS: AIProvider[] = ['opencode', 'gemini', 'openai', 'anthropic', 'openrouter'];
+const SECRET_PROVIDERS: AIProvider[] = ['opencode', 'gemini', 'openai', 'anthropic', 'openrouter', 'groq'];
 
 interface OwnerAiProfile {
   ai_provider?: string | null;

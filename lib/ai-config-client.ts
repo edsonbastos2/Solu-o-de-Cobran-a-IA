@@ -3,7 +3,7 @@
 // resolvedor server-side para o bundle do cliente. Se alterar lib/ai-config.ts,
 // atualize os valores aqui (DEFAULT_MODELS / MODEL_WHITELISTS / VISION_CAPABLE).
 
-export type AIProvider = 'opencode' | 'gemini' | 'openai' | 'anthropic' | 'openrouter' | 'ollama';
+export type AIProvider = 'opencode' | 'gemini' | 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'groq';
 export type AIBucket = 'assistant' | 'pdf_extraction' | 'agents';
 
 export const SUPPORTED_PROVIDERS: AIProvider[] = [
@@ -13,6 +13,7 @@ export const SUPPORTED_PROVIDERS: AIProvider[] = [
   'anthropic',
   'openrouter',
   'ollama',
+  'groq',
 ];
 
 export const PROVIDER_LABELS: Record<AIProvider, string> = {
@@ -22,6 +23,7 @@ export const PROVIDER_LABELS: Record<AIProvider, string> = {
   anthropic: 'Anthropic (Claude)',
   openrouter: 'OpenRouter',
   ollama: 'Ollama (Local)',
+  groq: 'Groq',
 };
 
 export const DEFAULT_MODELS: Record<AIProvider, string> = {
@@ -31,6 +33,7 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
   anthropic: 'claude-3-haiku',
   openrouter: 'meta-llama/llama-3-8b-instruct:free',
   ollama: 'llama3',
+  groq: 'llama-3.3-70b-versatile',
 };
 
 export const MODEL_WHITELISTS: Record<AIProvider, string[]> = {
@@ -40,6 +43,7 @@ export const MODEL_WHITELISTS: Record<AIProvider, string[]> = {
   anthropic: ['claude-3-5-sonnet', 'claude-3-haiku'],
   openrouter: ['meta-llama/llama-3-8b-instruct:free'],
   ollama: ['llama3'],
+  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b'],
 };
 
 // Modelo vision-capable do gateway OpenCode usado pelo fallback hardcoded de
@@ -55,6 +59,7 @@ export const VISION_CAPABLE: Record<AIProvider, boolean> = {
   gemini: true,
   openrouter: false,
   ollama: false,
+  groq: false,
 };
 
 export const PROVIDER_API_KEY_FIELD: Record<AIProvider, string> = {
@@ -64,6 +69,7 @@ export const PROVIDER_API_KEY_FIELD: Record<AIProvider, string> = {
   anthropic: 'anthropic_api_key',
   openrouter: 'openrouter_api_key',
   ollama: 'ollama_api_key',
+  groq: 'groq_api_key',
 };
 
 export const PROVIDER_KEY_PLACEHOLDERS: Record<AIProvider, string> = {
@@ -73,6 +79,7 @@ export const PROVIDER_KEY_PLACEHOLDERS: Record<AIProvider, string> = {
   anthropic: 'sk-ant-...',
   openrouter: 'sk-or-v1-...',
   ollama: '',
+  groq: 'gsk_...',
 };
 
 export function isProvider(v: unknown): v is AIProvider {

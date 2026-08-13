@@ -12,7 +12,7 @@ import {
 
 const SYSTEM_BUCKETS = ['assistant', 'pdf_extraction'] as const;
 type SystemBucket = (typeof SYSTEM_BUCKETS)[number];
-const SECRET_PROVIDERS: AIProvider[] = ['opencode', 'gemini', 'openai', 'anthropic', 'openrouter'];
+const SECRET_PROVIDERS: AIProvider[] = ['opencode', 'gemini', 'openai', 'anthropic', 'openrouter', 'groq'];
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null;

@@ -13,6 +13,7 @@ import { getActiveQuarantine } from '@/lib/quarantine';
 import { resolveTemplateVariables } from '@/lib/message-templates';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
+const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
 
 type ConversationMessage = {
   role: 'user' | 'ai' | 'human' | 'system';
@@ -165,10 +166,10 @@ async function callLLM(
 
   while (attempt < maxRetries) {
     try {
-      if (aiProvider === 'opencode' || aiProvider === 'openai' || aiProvider === 'ollama' || aiProvider === 'openrouter') {
+      if (aiProvider === 'opencode' || aiProvider === 'openai' || aiProvider === 'ollama' || aiProvider === 'openrouter' || aiProvider === 'groq') {
         const client = new OpenAI({
           apiKey: aiProvider === 'openrouter' ? apiKey : (aiProvider === 'ollama' ? 'ollama' : apiKey),
-          baseURL: aiProvider === 'opencode' ? OPENCODE_BASE_URL : (aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : (aiProvider === 'ollama' ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` : undefined))
+          baseURL: aiProvider === 'opencode' ? OPENCODE_BASE_URL : (aiProvider === 'openrouter' ? 'https://openrouter.ai/api/v1' : (aiProvider === 'ollama' ? `${ollamaBaseUrl.replace(/\/+$/, '')}/v1` : (aiProvider === 'groq' ? GROQ_BASE_URL : undefined)))
         });
 
         let messages: LlmMessage[] = [];
