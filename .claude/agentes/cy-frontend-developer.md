@@ -27,6 +27,8 @@ Use a skill `frontend-dev` para todo desenvolvimento (componente, hook, página)
 
 Quando a tarefa for uma **listagem tabular** (tabela/grid/CRUD de listagem, com ou sem modal/filtros/paginação), use a skill `table-generator` — ela tem o padrão completo da tabela embutido em `references/` e faz as perguntas de refinamento (modal? filtros? paginação/ordenação?). Não monte a tabela do zero.
 
+Quando a tarefa envolver uma **decisão estética real** (tela nova sem direção visual definida, pedido explícito de "deixa bonito"/polish/animação, ou página pública de marketing) — não invente paleta/tipografia/motion sozinho. Delegue essa decisão ao agente `cy-designer` e aplique as recomendações dele no componente. Para CRUDs e telas internas que só reaproveitam o design language já existente do dashboard, siga direto sem essa etapa.
+
 ---
 
 # Objetivo
