@@ -31,7 +31,7 @@ type TenantRow = { id: string };
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const tenantContext = await requireRole(req, 'member', searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'operador', searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId } = tenantContext.ctx;
 
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     const requestedTenantId = searchParams.get('tenant_id')
       || (typeof body?.tenant_id === 'string' ? body.tenant_id : null);
 
-    const tenantContext = await requireRole(req, 'member', requestedTenantId);
+    const tenantContext = await requireRole(req, 'gestor', requestedTenantId);
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId, userId } = tenantContext.ctx;
 

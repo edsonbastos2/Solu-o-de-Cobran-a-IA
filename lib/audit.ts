@@ -1,12 +1,13 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { TenantRole } from '@/lib/api-auth';
 
 export interface AuditActionParams {
   tenantId: string;
   entityType: string;
   entityId: string;
   actorUserId: string | null;
-  actorRole?: 'owner' | 'admin' | 'member' | null;
+  actorRole?: TenantRole | null;
   action: string;
   caseId?: string;
   metadata?: Record<string, unknown>;
@@ -43,7 +44,7 @@ export async function recordAuditAction(client: AuditClient, params: AuditAction
 /** Compatibilidade para auditoria administrativa já existente. */
 export async function auditAdminAction(params: {
   actorUserId: string;
-  actorRole?: 'owner' | 'admin' | 'member' | null;
+  actorRole?: TenantRole | null;
   action: string;
   details?: string;
   targetUserId?: string;

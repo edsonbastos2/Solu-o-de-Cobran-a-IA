@@ -9,7 +9,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json().catch(() => null);
-  const tenant = await requireRole(req, 'member', new URL(req.url).searchParams.get('tenant_id'));
+  const tenant = await requireRole(req, 'operador', new URL(req.url).searchParams.get('tenant_id'));
   if ('response' in tenant) return tenant.response;
 
   try {

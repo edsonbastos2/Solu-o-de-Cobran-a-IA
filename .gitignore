@@ -22,6 +22,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# MCP server config (contém SUPABASE_ACCESS_TOKEN em texto plano)
+.mcp.json
+
 # Editor / OS
 .DS_Store
 Thumbs.db

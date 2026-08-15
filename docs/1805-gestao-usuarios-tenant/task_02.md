@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 title: "lib/api-auth.ts: TenantRole (4 valores), requireAIConfigPermission"
 type: backend
 complexity: média
@@ -8,6 +8,10 @@ dependencies:
 ---
 
 # Tarefa 02: Estender `lib/api-auth.ts` para papéis de 4 níveis e a permissão de configuração de IA
+
+## Nota de status
+
+Implementado. `lib/api-auth.ts` exporta `TenantRole` (4 valores), `ROLE_RANK` atualizado, `canConfigureAI` em `TenantContext` e `requireAIConfigPermission`; `lib/audit.ts` usa `TenantRole` para `actorRole`. `npx tsc --noEmit` e `npm run lint` (arquivos tocados) limpos. Dez call sites que ainda passavam `requireRole(req, 'member', ...)` foram trocados para `'operador'` apenas para satisfazer o compilador — a escolha do `minRole` correto por rota é escopo da task_04 (ver lista completa no relatório de execução). Verificação manual dos casos de teste do checklist abaixo (papel `gestor` de fato, `can_configure_ai` via coluna) não pôde ser executada ponta a ponta neste ambiente porque a migração da task_01 ainda não foi aplicada ao Supabase remoto (sem acesso de rede); a lógica foi validada por leitura de código e pelos branches exercitados na análise abaixo.
 
 ## Visão Geral
 
@@ -33,11 +37,11 @@ Estende o helper central de autorização do lado do servidor com o novo modelo 
 </requirements>
 
 ## Subtarefas
-- [ ] 02.1 Atualizar `TenantContext`, `ROLE_RANK` e a assinatura/tipo do `requireRole` em `lib/api-auth.ts`.
-- [ ] 02.2 Atualizar a consulta `tenant_members` do `requireTenantContext` para selecionar `can_configure_ai` e computar `canConfigureAI` + o fallback de papel corrigido.
-- [ ] 02.3 Adicionar `requireAIConfigPermission`.
-- [ ] 02.4 Atualizar o tipo `actorRole` de `lib/audit.ts` para `TenantRole` e re-exportar/importar conforme necessário.
-- [ ] 02.5 Executar `npx tsc --noEmit` e corrigir todo call site que quebra com o literal `'member'` removido (espere hits em rotas que ainda passam `requireRole(req, 'member', ...)` — são exatamente as rotas que a task_04 retroaplica; para esta tarefa, apenas faça-as passar na checagem de tipos, por exemplo temporariamente como `'operador'`, já que a task_04 é dona da correção do minRole escolhido de cada rota).
+- [x] 02.1 Atualizar `TenantContext`, `ROLE_RANK` e a assinatura/tipo do `requireRole` em `lib/api-auth.ts`.
+- [x] 02.2 Atualizar a consulta `tenant_members` do `requireTenantContext` para selecionar `can_configure_ai` e computar `canConfigureAI` + o fallback de papel corrigido.
+- [x] 02.3 Adicionar `requireAIConfigPermission`.
+- [x] 02.4 Atualizar o tipo `actorRole` de `lib/audit.ts` para `TenantRole` e re-exportar/importar conforme necessário.
+- [x] 02.5 Executar `npx tsc --noEmit` e corrigir todo call site que quebra com o literal `'member'` removido (espere hits em rotas que ainda passam `requireRole(req, 'member', ...)` — são exatamente as rotas que a task_04 retroaplica; para esta tarefa, apenas faça-as passar na checagem de tipos, por exemplo temporariamente como `'operador'`, já que a task_04 é dona da correção do minRole escolhido de cada rota).
 
 ## Detalhes de Implementação
 

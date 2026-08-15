@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase-server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
 import { validateFields } from '@/lib/api-validate';
 import { recordAuditAction } from '@/lib/audit';
 
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const tenantContext = await requireTenantContext(req, body?.tenant_id ?? new URL(req.url).searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'gestor', body?.tenant_id ?? new URL(req.url).searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId, userId, role } = tenantContext.ctx;
 

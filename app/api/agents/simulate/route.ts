@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processMultiAgentSimulation } from '@/lib/multi-agent';
 
+// FIXME(ticket 1805 levantamento): rota sem nenhuma verificação de auth (nem requireUser) — pré-existente, fora de escopo deste ticket, acompanhar em follow-up separado.
 export async function POST(req: NextRequest) {
   try {
     const { message, caseInfo, agentsList, apiKey } = await req.json();

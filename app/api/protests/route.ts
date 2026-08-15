@@ -33,7 +33,7 @@ type TenantRow = { id: string };
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const tenantContext = await requireRole(req, 'member', searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'operador', searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId } = tenantContext.ctx;
 

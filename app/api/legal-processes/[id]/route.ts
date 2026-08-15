@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const requestedTenantId = searchParams.get('tenant_id')
       || (typeof body?.tenant_id === 'string' ? body.tenant_id : null);
 
-    const tenantContext = await requireRole(req, 'member', requestedTenantId);
+    const tenantContext = await requireRole(req, 'gestor', requestedTenantId);
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId, userId } = tenantContext.ctx;
 

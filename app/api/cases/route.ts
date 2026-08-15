@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
 import { calculateUpdatedValue } from '@/lib/finance';
 import { CaseWithRelations, CreateCaseResult } from '@/lib/types';
 
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const requestedTenantId = searchParams.get('tenant_id')
     || (typeof body?.tenant_id === 'string' ? body.tenant_id : null);
-  const tenant = await requireTenantContext(req, requestedTenantId);
+  const tenant = await requireRole(req, 'gestor', requestedTenantId);
   if ('response' in tenant) return tenant.response;
 
   try {

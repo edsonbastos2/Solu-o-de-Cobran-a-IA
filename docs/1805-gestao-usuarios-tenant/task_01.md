@@ -1,10 +1,22 @@
 ---
-status: pending
+status: sql-pronto-aplicacao-manual-pendente
 title: "Migração SQL: papéis de 4 níveis, can_configure_ai, triggers de convite"
 type: infra
 complexity: alta
 dependencies: []
 ---
+
+> **Nota de status (agente implementador, sem acesso ao Supabase remoto neste ambiente):**
+> `supabase_tenant_team_management.sql` foi autorado na raiz do projeto, cobrindo os 8
+> requisitos e as 5 primeiras subtarefas (01.1–01.5) desta tarefa, revisado linha a linha
+> contra os requisitos abaixo. A subtarefa 01.6 (aplicar no projeto Supabase e verificar
+> manualmente os caminhos de auto-cadastro e de usuário convidado) **não foi executada**
+> — este ambiente de subagente não tem acesso de rede/credenciais ao Supabase. Um roteiro
+> de verificação pós-aplicação (as queries SELECT que cobrem cada item do checklist de
+> Testes abaixo) está documentado como comentário ao final do arquivo SQL. Um humano com
+> acesso ao editor SQL do Supabase deve: (1) aplicar o arquivo, (2) rodar o roteiro de
+> verificação, (3) marcar os itens de Testes abaixo e promover o status desta tarefa para
+> `done` somente depois disso.
 
 # Tarefa 01: Migração SQL — papéis de 4 níveis, interruptor de configuração de IA, triggers de convite
 

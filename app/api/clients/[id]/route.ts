@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireRole, serverError } from '@/lib/api-auth';
 import { validateFields } from '@/lib/api-validate';
 import { recordAuditAction } from '@/lib/audit';
 
@@ -11,7 +11,7 @@ export async function PUT(
     const { id } = await params;
     const body = await req.json();
 
-    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'gestor', new URL(req.url).searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId, role, userId } = tenantContext.ctx;
 
@@ -67,7 +67,7 @@ export async function PUT(
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const tenantContext = await requireTenantContext(req, new URL(req.url).searchParams.get('tenant_id'));
+    const tenantContext = await requireRole(req, 'gestor', new URL(req.url).searchParams.get('tenant_id'));
     if ('response' in tenantContext) return tenantContext.response;
     const { supabase, tenantId, userId, role } = tenantContext.ctx;
 

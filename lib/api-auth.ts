@@ -8,9 +8,14 @@ export interface AuthContext {
   currentTenantId: string | null;
 }
 
+/** Papéis fixos de equipe do tenant, do maior para o menor rank. */
+export type TenantRole = 'owner' | 'admin' | 'gestor' | 'operador';
+
 export interface TenantContext extends AuthContext {
   tenantId: string;
-  role: 'owner' | 'admin' | 'member';
+  role: TenantRole;
+  /** owner/admin sempre true; gestor/operador dependem de tenant_members.can_configure_ai. */
+  canConfigureAI: boolean;
   supabase: NonNullable<ReturnType<typeof getSupabaseServer>>;
 }
 
@@ -71,10 +76,12 @@ export async function requireTenantContext(
 
   const { ctx: authContext } = auth;
   let tenantId: string | null = null;
-  let role: TenantContext['role'] = 'member';
+  let role: TenantRole = 'operador';
+  let canConfigureAI = false;
 
   if (authContext.isSuperAdmin) {
     role = 'owner';
+    canConfigureAI = true;
     const candidateTenantId = requestedTenantId ?? authContext.currentTenantId;
     if (!candidateTenantId) {
       return { response: NextResponse.json({ error: 'Tenant explícito é obrigatório para esta operação.', code: 'TENANT_REQUIRED' }, { status: 400 }) };
@@ -94,7 +101,7 @@ export async function requireTenantContext(
   } else {
     const { data: membership, error } = await supabase
       .from('tenant_members')
-      .select('tenant_id, role')
+      .select('tenant_id, role, can_configure_ai')
       .eq('user_id', authContext.userId)
       .eq('status', 'active')
       .order('created_at', { ascending: true })
@@ -119,30 +126,53 @@ export async function requireTenantContext(
       return { response: NextResponse.json({ error: 'Acesso negado.', code: 'TENANT_FORBIDDEN' }, { status: 404 }) };
     }
     tenantId = membership.tenant_id;
-    const memberRole = String(membership.role || 'member').toLowerCase();
-    role = memberRole === 'owner' || memberRole === 'admin' ? memberRole : 'member';
+    const memberRole = String(membership.role || 'operador').toLowerCase();
+    role =
+      memberRole === 'owner' || memberRole === 'admin' || memberRole === 'gestor' || memberRole === 'operador'
+        ? (memberRole as TenantRole)
+        : 'operador';
+    canConfigureAI = role === 'owner' || role === 'admin' || membership.can_configure_ai === true;
   }
 
   if (!tenantId) {
     return { response: NextResponse.json({ error: 'Tenant não encontrado.', code: 'TENANT_NOT_FOUND' }, { status: 404 }) };
   }
-  return { ctx: { ...authContext, tenantId, role, supabase } };
+  return { ctx: { ...authContext, tenantId, role, canConfigureAI, supabase } };
 }
 
+const ROLE_RANK: Record<TenantRole, number> = { owner: 4, admin: 3, gestor: 2, operador: 1 };
+
 /**
- * Exige um papel mínimo (owner > admin > member) no tenant ativo.
+ * Exige um papel mínimo (owner > admin > gestor > operador) no tenant ativo.
  * Retorna 403 se o papel do usuário for insuficiente.
  */
 export async function requireRole(
   req: NextRequest,
-  minRole: 'owner' | 'admin' | 'member',
+  minRole: TenantRole,
   requestedTenantId?: string | null
 ): Promise<{ ctx: TenantContext } | { response: NextResponse }> {
   const result = await requireTenantContext(req, requestedTenantId);
   if ('response' in result) return result;
 
-  const ROLE_RANK: Record<'owner' | 'admin' | 'member', number> = { owner: 3, admin: 2, member: 1 };
   if (ROLE_RANK[result.ctx.role] < ROLE_RANK[minRole]) {
+    return { response: NextResponse.json({ error: 'Permissão insuficiente para realizar esta ação.' }, { status: 403 }) };
+  }
+  return result;
+}
+
+/**
+ * Exige a permissão independente de configuração de IA (owner/admin sempre têm;
+ * gestor/operador dependem de tenant_members.can_configure_ai). Retorna 403 caso contrário.
+ * Use no lugar de requireRole para rotas de configuração de provedores de IA.
+ */
+export async function requireAIConfigPermission(
+  req: NextRequest,
+  requestedTenantId?: string | null
+): Promise<{ ctx: TenantContext } | { response: NextResponse }> {
+  const result = await requireTenantContext(req, requestedTenantId);
+  if ('response' in result) return result;
+
+  if (!result.ctx.canConfigureAI) {
     return { response: NextResponse.json({ error: 'Permissão insuficiente para realizar esta ação.' }, { status: 403 }) };
   }
   return result;

@@ -16,13 +16,14 @@ export type UserProfile = {
   zapi_instance?: string | null;
 };
 
-export type TenantRole = 'owner' | 'admin' | 'member';
+export type TenantRole = 'owner' | 'admin' | 'gestor' | 'operador';
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<TenantRole | null>(null);
+  const [canConfigureAI, setCanConfigureAI] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -42,7 +43,7 @@ export function useAuth() {
         setProfile(data);
         const { data: membership } = await client
           .from('tenant_members')
-          .select('role')
+          .select('role, can_configure_ai')
           .eq('user_id', userId)
           .eq('status', 'active')
           .order('created_at', { ascending: true })
@@ -50,7 +51,12 @@ export function useAuth() {
           .maybeSingle();
         if (membership?.role) {
           const r = String(membership.role).toLowerCase();
-          setRole(r === 'owner' || r === 'admin' || r === 'member' ? r : 'member');
+          const resolvedRole: TenantRole =
+            r === 'owner' || r === 'admin' || r === 'gestor' || r === 'operador' ? r : 'operador';
+          setRole(resolvedRole);
+          setCanConfigureAI(
+            resolvedRole === 'owner' || resolvedRole === 'admin' || membership.can_configure_ai === true
+          );
         }
       } catch (error: unknown) {
         console.error('Error fetching profile:', error);
@@ -65,6 +71,7 @@ export function useAuth() {
         fetchProfile(session.user.id).finally(() => setLoading(false));
       } else {
         setRole(null);
+        setCanConfigureAI(false);
         setLoading(false);
       }
     });
@@ -78,6 +85,7 @@ export function useAuth() {
       } else {
         setProfile(null);
         setRole(null);
+        setCanConfigureAI(false);
         setLoading(false);
       }
     });
@@ -87,6 +95,6 @@ export function useAuth() {
     };
   }, []);
 
-  return { user, profile, role, session, loading, isConfigured: isSupabaseConfigured };
+  return { user, profile, role, canConfigureAI, session, loading, isConfigured: isSupabaseConfigured };
 }
 

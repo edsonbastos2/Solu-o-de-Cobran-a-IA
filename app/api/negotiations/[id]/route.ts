@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
 import { NegotiationStatus, NegotiationWithRelations } from '@/lib/types';
 
@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json().catch(() => null);
   const requestedTenantId = searchParams.get('tenant_id')
     || (typeof body?.tenant_id === 'string' ? body.tenant_id : null);
-  const tenant = await requireTenantContext(req, requestedTenantId);
+  const tenant = await requireRole(req, 'gestor', requestedTenantId);
   if ('response' in tenant) return tenant.response;
 
   try {

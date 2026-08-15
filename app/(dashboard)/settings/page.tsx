@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, AlertTriangle, Bot, Send, Building2 } from 'lucide-react';
+import { User, Camera, Mail, Save, Lock, Bell, MessageSquare, Briefcase, Zap, AlertTriangle, Bot, Send, Building2, Users } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneInput } from '@/lib/utils';
 import { CheckCircle2 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
 import { TenantAiConfigPanel } from '@/components/tenant-ai-config-panel';
+import { TeamManagementPanel } from '@/components/team-management-panel';
 
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'ai' | 'tenant'>('profile');
+  const { user, role } = useAuth();
+  const [activeTab, setActiveTab] = useState<'profile' | 'ai' | 'tenant' | 'team'>('profile');
+  const canManageTeam = role === 'owner' || role === 'admin';
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -166,6 +168,15 @@ export default function SettingsPage() {
               <Building2 className="w-4 h-4 shrink-0" />
               Configurações do Tenant
             </button>
+            {canManageTeam && (
+              <button
+                onClick={() => setActiveTab('team')}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors text-left ${activeTab === 'team' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:bg-white/5 hover:text-slate-300 border border-transparent'}`}
+              >
+                <Users className="w-4 h-4 shrink-0" />
+                Equipe
+              </button>
+            )}
             <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-300 font-medium text-sm transition-colors text-left border border-transparent">
               <Bell className="w-4 h-4 shrink-0" />
               Notificações
@@ -180,7 +191,9 @@ export default function SettingsPage() {
                 <p>{error}</p>
               </div>
             )}
-            {activeTab === 'tenant' ? (
+            {activeTab === 'team' && canManageTeam ? (
+              <TeamManagementPanel />
+            ) : activeTab === 'tenant' ? (
               <TenantAiConfigPanel />
             ) : (
             <form onSubmit={handleSave}>

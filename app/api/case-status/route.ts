@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireRole, serverError } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
 
 const STATUSES = new Set(['not_started', 'in_negotiation', 'needs_attention', 'closed']);
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Caso e status válidos são obrigatórios.' }, { status: 400 });
   }
 
-  const tenant = await requireTenantContext(req, body?.tenant_id);
+  const tenant = await requireRole(req, 'gestor', body?.tenant_id);
   if ('response' in tenant) return tenant.response;
 
   try {

@@ -8,7 +8,7 @@ import { requireRole, serverError } from '@/lib/api-auth';
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await req.json().catch(() => null);
-  const tenant = await requireRole(req, 'member', new URL(req.url).searchParams.get('tenant_id'));
+  const tenant = await requireRole(req, 'operador', new URL(req.url).searchParams.get('tenant_id'));
   if ('response' in tenant) return tenant.response;
 
   try {

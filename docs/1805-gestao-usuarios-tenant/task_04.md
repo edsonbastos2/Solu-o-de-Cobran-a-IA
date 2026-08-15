@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 title: "Retroaplicar requireRole('gestor', ...) nas rotas de mutação existentes"
 type: backend
 complexity: alta
@@ -42,12 +42,36 @@ Um levantamento de todo o repositório (registrado na Análise de Impacto da Tec
 </requirements>
 
 ## Subtarefas
-- [ ] 04.1 Retroaplicar as rotas de `clients` (POST/PUT/DELETE) e `cases`/`case-status` (POST/PATCH/DELETE).
-- [ ] 04.2 Retroaplicar as rotas de `contracts` (apenas POST), `negotiations` (POST/PATCH) e `financial-titles/[id]` (PATCH).
-- [ ] 04.3 Retroaplicar `legal-processes` (POST/PATCH), substituindo o literal `'member'` agora inválido.
-- [ ] 04.4 Trocar o PUT de `tenants/[id]/ai-config` para `requireAIConfigPermission`.
-- [ ] 04.5 Corrigir o literal `'member'` agora inválido no PATCH de `notifications/[id]` e no POST de `message-templates/[id]/preview` para `'operador'` sem mudar o acesso efetivo delas (irrestrito-além-da-associação-ao-tenant).
-- [ ] 04.6 Verificar que toda rota já protegida com `admin` está intocada (revisão de diff) e que toda rota de envio de mensagens está intocada.
+- [x] 04.1 Retroaplicar as rotas de `clients` (POST/PUT/DELETE) e `cases`/`case-status` (POST/PATCH/DELETE).
+- [x] 04.2 Retroaplicar as rotas de `contracts` (apenas POST), `negotiations` (POST/PATCH) e `financial-titles/[id]` (PATCH).
+- [x] 04.3 Retroaplicar `legal-processes` (POST/PATCH), substituindo o literal `'member'` agora inválido.
+- [x] 04.4 Trocar o PUT de `tenants/[id]/ai-config` para `requireAIConfigPermission`.
+- [x] 04.5 Corrigir o literal `'member'` agora inválido no PATCH de `notifications/[id]` e no POST de `message-templates/[id]/preview` para `'operador'` sem mudar o acesso efetivo delas (irrestrito-além-da-associação-ao-tenant). — Já corrigido pela task_02; confirmado nesta tarefa sem mudança adicional.
+- [x] 04.6 Verificar que toda rota já protegida com `admin` está intocada (revisão de diff) e que toda rota de envio de mensagens está intocada.
+
+## Nota de Status
+
+Implementação concluída nesta sessão. `npx tsc --noEmit` e `npm run lint` rodaram limpos (0 erros; apenas warnings pré-existentes não relacionados). Sem acesso a um Supabase remoto neste ambiente de subagente, a verificação manual da matriz papel×rota (checklist da seção Testes) não pôde ser exercitada ponta a ponta — fica documentada abaixo para verificação humana posterior:
+
+| Rota | Método | `operador` | `gestor` | `admin`/`owner` |
+|---|---|---|---|---|
+| `/api/clients` | POST | 403 | 201 | 201 |
+| `/api/clients/[id]` | PUT | 403 | 200 | 200 |
+| `/api/clients/[id]` | DELETE | 403 | 200 | 200 |
+| `/api/cases` | POST | 403 | 201 | 201 |
+| `/api/cases/[id]` | PATCH | 403 | 200 | 200 |
+| `/api/cases/[id]` | DELETE | 403 | 200 | 200 |
+| `/api/case-status` | POST | 403 | 200 | 200 |
+| `/api/contracts` | POST | 403 | 201 | 201 |
+| `/api/negotiations` | POST | 403 | 201 | 201 |
+| `/api/negotiations/[id]` | PATCH | 403 | 200 | 200 |
+| `/api/financial-titles/[id]` | PATCH | 403 | 200 | 200 |
+| `/api/legal-processes` | POST | 403 | 201 | 201 |
+| `/api/legal-processes/[id]` | PATCH | 403 | 200 | 200 |
+| `/api/start-negotiation`, `/api/chat`, `/api/agent-message` | POST | 200 (inalterado) | 200 | 200 |
+| `/api/notifications/[id]` (própria notificação) | PATCH | 200 (inalterado) | 200 | 200 |
+| `/api/policies` (regressão) | POST | 403 (inalterado) | 403 (inalterado) | 200 |
+| `/api/tenants/[id]/ai-config` | PUT | 403 sem `can_configure_ai`; 200 com `can_configure_ai=true` | 403 sem `can_configure_ai`; 200 com `can_configure_ai=true` | 200 sempre |
 
 ## Detalhes de Implementação
 

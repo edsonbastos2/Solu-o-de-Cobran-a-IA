@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
+import { requireTenantContext, requireAIConfigPermission, serverError } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
 import {
   AIBucket,
@@ -212,7 +212,7 @@ export async function PUT(
     const search = new URL(req.url).searchParams;
     const requestedTenantId = search.get('tenant_id') ?? id;
 
-    const tctx = await requireRole(req, 'admin', requestedTenantId);
+    const tctx = await requireAIConfigPermission(req, requestedTenantId);
     if ('response' in tctx) return tctx.response;
     const { tenantId, userId } = tctx.ctx;
 

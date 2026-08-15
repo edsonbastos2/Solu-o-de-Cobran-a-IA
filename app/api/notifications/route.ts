@@ -3,7 +3,7 @@ import { requireRole, serverError } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const tenant = await requireRole(req, 'member', searchParams.get('tenant_id'));
+  const tenant = await requireRole(req, 'operador', searchParams.get('tenant_id'));
   if ('response' in tenant) return tenant.response;
 
   try {

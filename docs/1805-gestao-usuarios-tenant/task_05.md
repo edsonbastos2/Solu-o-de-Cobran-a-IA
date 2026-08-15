@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 title: "Rotas de API de gestão de equipe (app/api/tenants/[id]/members/*)"
 type: backend
 complexity: alta
@@ -34,12 +34,14 @@ Implementa as cinco rotas que permitem ao `owner`/`admin` de um tenant convidar,
 </requirements>
 
 ## Subtarefas
-- [ ] 05.1 `GET /api/tenants/[id]/members` — listar membros ativos + pendentes com email/name/role/canConfigureAI/status.
-- [ ] 05.2 `POST /api/tenants/[id]/members/invite` — validação, tratamento de e-mail duplicado, chamada `inviteUserByEmail`, auditoria.
-- [ ] 05.3 `PATCH /api/tenants/[id]/members/[memberId]` — verificação de imunidade do owner, atualização de papel/permissão, auditoria com before/after.
-- [ ] 05.4 `DELETE /api/tenants/[id]/members/[memberId]` — verificação de imunidade do owner, branch de limpeza pendente-vs-ativo, auditoria.
-- [ ] 05.5 `POST /api/tenants/[id]/members/[memberId]/resend` — guarda apenas-pendente, re-convite, auditoria.
-- [ ] 05.6 Conectar `rateLimit` em invite/resend.
+- [x] 05.1 `GET /api/tenants/[id]/members` — listar membros ativos + pendentes com email/name/role/canConfigureAI/status.
+- [x] 05.2 `POST /api/tenants/[id]/members/invite` — validação, tratamento de e-mail duplicado, chamada `inviteUserByEmail`, auditoria.
+- [x] 05.3 `PATCH /api/tenants/[id]/members/[memberId]` — verificação de imunidade do owner, atualização de papel/permissão, auditoria com before/after.
+- [x] 05.4 `DELETE /api/tenants/[id]/members/[memberId]` — verificação de imunidade do owner, branch de limpeza pendente-vs-ativo, auditoria.
+- [x] 05.5 `POST /api/tenants/[id]/members/[memberId]/resend` — guarda apenas-pendente, re-convite, auditoria.
+- [x] 05.6 Conectar `rateLimit` em invite/resend.
+
+**Nota de status**: as cinco rotas foram implementadas com `npx tsc --noEmit` e `npm run lint` limpos (0 erros). Um desvio pontual do texto literal do ADR-002 foi necessário e está documentado como comentário no topo de `app/api/tenants/[id]/members/route.ts`: o `GET` usa o client admin (não o client normal) para resolver `name`/`email` dos membros, porque a política RLS `profile_select` (`supabase_tenant_model.sql:853`) restringe a leitura de `public.profiles` à própria linha do usuário — um membro comum não conseguiria ler nome/e-mail de colegas de tenant via RLS pura. A autorização de quem pode chamar a rota continua 100% em `requireTenantContext` (qualquer membro ativo, sem elevação de papel), inalterada em relação ao ADR. Verificação ponta a ponta de todos os casos da seção Testes abaixo fica pendente até a migração da task_01 ser aplicada a um Supabase remoto (sem acesso de rede neste ambiente de subagente).
 
 ## Detalhes de Implementação
 

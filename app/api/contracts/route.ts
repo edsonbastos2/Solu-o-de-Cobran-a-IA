@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, serverError, TenantContext } from '@/lib/api-auth';
+import { requireTenantContext, requireRole, serverError, TenantContext } from '@/lib/api-auth';
 
 type ContractCreateBody = {
   tenant_id?: string | null;
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json() as ContractCreateBody;
-    const tenantContext = await requireTenantContext(req, body.tenant_id);
+    const tenantContext = await requireRole(req, 'gestor', body.tenant_id);
     if ('response' in tenantContext) return tenantContext.response;
 
     database = tenantContext.ctx.supabase;

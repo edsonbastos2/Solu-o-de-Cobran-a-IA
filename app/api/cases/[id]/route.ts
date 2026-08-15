@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, serverError } from '@/lib/api-auth';
+import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
 import { calculateUpdatedValue, getCollectionStage } from '@/lib/finance';
 import { recordAuditAction } from '@/lib/audit';
 import { CaseWithRelations } from '@/lib/types';
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { searchParams } = new URL(req.url);
-  const tenant = await requireTenantContext(req, searchParams.get('tenant_id'));
+  const tenant = await requireRole(req, 'gestor', searchParams.get('tenant_id'));
   if ('response' in tenant) return tenant.response;
 
   try {
@@ -180,7 +180,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { searchParams } = new URL(req.url);
-  const tenant = await requireTenantContext(req, searchParams.get('tenant_id'));
+  const tenant = await requireRole(req, 'gestor', searchParams.get('tenant_id'));
   if ('response' in tenant) return tenant.response;
 
   try {
