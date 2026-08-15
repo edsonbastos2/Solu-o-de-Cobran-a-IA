@@ -12,6 +12,10 @@ npm run clean        # `next clean` — clears .next cache
 ESLint is skipped during builds (`eslint.ignoreDuringBuilds: true` in `next.config.ts`).
 No test suite, no formatter, no CI/CD configured.
 
+## Documentation language
+
+**All documentation (docs, PRDs, TechSpecs, ADRs, task files, README, comments in `.md` files) must be written in Brazilian Portuguese (pt-BR).** Never write documentation in English. Technical terms, identifiers, code blocks, and file paths must stay in their original form (English); only the prose is translated.
+
 ## Architecture
 
 - **Next.js 15 App Router** with React 19, TypeScript 5.7 (strict), Tailwind CSS 4.1
