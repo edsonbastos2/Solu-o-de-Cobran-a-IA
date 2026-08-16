@@ -10,11 +10,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  // /convite/* também é público: a página de aceite de convite roda antes de
+  // qualquer sessão própria existir (a sessão é estabelecida pelo próprio
+  // Supabase a partir do link do e-mail, já dentro da página) — ver ticket 1805.
+  const isPublicRoute = pathname === '/login' || pathname.startsWith('/convite');
+
   useEffect(() => {
-    if (isConfigured && !loading && !user && pathname !== '/login') {
+    if (isConfigured && !loading && !user && !isPublicRoute) {
       router.push('/login');
     }
-  }, [isConfigured, user, loading, router, pathname]);
+  }, [isConfigured, user, loading, router, isPublicRoute]);
 
   if (loading) {
     return (
@@ -25,7 +30,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   // Demo mode intentionally renders the app without an auth session.
-  if (isConfigured && !user && pathname !== '/login') {
+  if (isConfigured && !user && !isPublicRoute) {
     return null;
   }
 

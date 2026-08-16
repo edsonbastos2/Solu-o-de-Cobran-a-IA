@@ -1,8 +1,8 @@
 // Helpers compartilhados pelas rotas de gestão de equipe
-// (app/api/tenants/[id]/members/*) para classificar erros de
-// supabaseAdmin.auth.admin.inviteUserByEmail() sem adivinhar a forma exata
-// do erro do GoTrue — ver docs/1805-gestao-usuarios-tenant/adrs/adr-003.md.
-import { isAuthApiError } from '@supabase/supabase-js';
+// (app/api/tenants/[id]/members/*): classificação de erros do Admin API do
+// Supabase Auth (generateLink) e montagem do contexto usado no e-mail de
+// convite próprio (Resend) — ver docs/1805-gestao-usuarios-tenant/adrs/adr-003.md.
+import { isAuthApiError, SupabaseClient } from '@supabase/supabase-js';
 import { TenantRole } from '@/lib/api-auth';
 
 /** Papéis atribuíveis por convite — 'owner' nunca é convidado (ver ADR-003). */
@@ -28,14 +28,43 @@ export function isDuplicateInviteError(error: unknown): boolean {
   return /already registered|already exists|already been registered/i.test(error.message);
 }
 
+/** Base pública da aplicação usada para montar URLs de convite/recovery. */
+function appBaseUrl(): string {
+  return (process.env.APP_URL || '').replace(/\/+$/, '');
+}
+
 /**
- * true quando o erro do inviteUserByEmail indica falha na ENTREGA do e-mail
- * (ex.: SMTP não configurado no projeto Supabase) em vez de um erro de
- * validação/duplicidade. Heurística best-effort sobre a mensagem do GoTrue —
- * o Supabase não expõe um `code` dedicado para isso hoje.
+ * Monta a URL de convite enviada por e-mail apontando para nossa própria rota
+ * de confirmação (`/convite/confirmar`) em vez do `action_link` bruto do
+ * Supabase. Motivo: o `action_link` consome o token com um simples GET no
+ * `/auth/v1/verify` do Supabase e devolve a sessão via hash fragment — isso
+ * quebra com scanners de segurança de e-mail que pré-visitam links (ex.: Safe
+ * Links do Outlook/Hotmail) e não é compatível com o client cookie-based do
+ * @supabase/ssr. Usando `hashed_token` + nossa rota `/convite/confirmar`
+ * (que chama `verifyOtp` server-side e seta a sessão via cookies na resposta),
+ * o token só é consumido quando o usuário efetivamente abre nossa página.
  */
-export function isEmailDeliveryError(error: unknown): boolean {
-  if (!isAuthApiError(error)) return false;
-  if (isDuplicateInviteError(error)) return false;
-  return /smtp|sending|deliver|mail server|email provider/i.test(error.message);
+export function buildConfirmUrl(tokenHash: string, type: string, next: string = '/convite/aceitar'): string {
+  const params = new URLSearchParams({ token_hash: tokenHash, type, next });
+  return `${appBaseUrl()}/convite/confirmar?${params.toString()}`;
+}
+
+/**
+ * Resolve o nome do tenant e do convidante para personalizar o e-mail de
+ * convite. Usa fallbacks genéricos quando o nome não está preenchido —
+ * nunca bloqueia o envio por falta desse dado cosmético.
+ */
+export async function resolveInviteEmailContext(
+  admin: SupabaseClient,
+  tenantId: string,
+  actorUserId: string
+): Promise<{ tenantName: string; inviterName: string }> {
+  const [{ data: tenantRow }, { data: inviterProfile }] = await Promise.all([
+    admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
+    admin.from('profiles').select('name').eq('id', actorUserId).maybeSingle(),
+  ]);
+  return {
+    tenantName: tenantRow?.name || 'seu time',
+    inviterName: inviterProfile?.name || 'Um administrador',
+  };
 }

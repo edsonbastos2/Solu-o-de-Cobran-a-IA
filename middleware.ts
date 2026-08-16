@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 // Rotas públicas (não exigem sessão)
 const PUBLIC_PATHS = [
   '/login',
+  '/convite',              // aceite de convite de equipe — usuário ainda não tem sessão própria (ticket 1805)
   '/api/webhook',        // webhook usa seu próprio secret
   '/api/cron',            // cron usa CRON_SECRET
   // /api/extract-contract removido de PUBLIC_PATHS em hardening de segurança:

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { requireRole, serverError } from '@/lib/api-auth';
+import { requireRole, serverError, TenantRole } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
 import { rateLimit } from '@/lib/rate-limit';
-import { isDuplicateInviteError, isEmailDeliveryError } from '@/lib/team-invite';
+import { buildConfirmUrl, isDuplicateInviteError, resolveInviteEmailContext } from '@/lib/team-invite';
+import { sendEmail } from '@/lib/email';
+import { buildTeamInviteEmail } from '@/lib/email-templates/team-invite';
 import { logger } from '@/lib/logger';
 
 // POST /api/tenants/[id]/members/[memberId]/resend — reenvia um convite
@@ -55,34 +57,57 @@ export async function POST(
       return serverError('tenants/[id]/members/[memberId]/resend: usuário convidado não encontrado', userError);
     }
     const email = userData.user.email;
+    const role = target.role as TenantRole;
 
-    const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: {
-        invited_tenant_id: tenantId,
-        invited_role: target.role,
-        invited_can_configure_ai: target.can_configure_ai === true,
+    // O usuário já existe (não confirmado) desde o convite original, então
+    // generateLink({type:'invite'}) rejeita por "já registrado" — nesse caso
+    // caímos para type:'recovery', que gera um link válido para o mesmo
+    // usuário pendente e, ao ser verificado, também confirma o e-mail
+    // (dispara handle_invited_user_confirmed() igual ao link de convite).
+    let linkType: 'invite' | 'recovery' = 'invite';
+    let linkResult = await admin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: {
+        data: {
+          invited_tenant_id: tenantId,
+          invited_role: role,
+          invited_can_configure_ai: target.can_configure_ai === true,
+        },
       },
     });
 
-    if (inviteError) {
-      if (isEmailDeliveryError(inviteError)) {
-        logger.warn(
-          'tenants/[id]/members/[memberId]/resend: entrega de e-mail indisponível',
-          { tenantId },
-          { error: inviteError.message, code: inviteError.code }
-        );
-        return NextResponse.json(
-          {
-            error:
-              'Não foi possível reenviar o e-mail de convite. Verifique se o SMTP está configurado no projeto Supabase.',
-          },
-          { status: 502 }
-        );
-      }
-      if (isDuplicateInviteError(inviteError)) {
-        return serverError('tenants/[id]/members/[memberId]/resend: duplicidade inesperada', inviteError);
-      }
-      return serverError('tenants/[id]/members/[memberId]/resend error', inviteError);
+    if (linkResult.error && isDuplicateInviteError(linkResult.error)) {
+      linkType = 'recovery';
+      linkResult = await admin.auth.admin.generateLink({ type: 'recovery', email });
+    }
+
+    if (linkResult.error) {
+      return serverError('tenants/[id]/members/[memberId]/resend error', linkResult.error);
+    }
+
+    const hashedToken = linkResult.data.properties?.hashed_token;
+    if (!hashedToken) {
+      return serverError('tenants/[id]/members/[memberId]/resend: resposta sem link', linkResult.error);
+    }
+    const acceptUrl = buildConfirmUrl(hashedToken, linkType);
+
+    const { tenantName, inviterName } = await resolveInviteEmailContext(admin, tenantId, ctx.userId);
+    const { subject, html } = buildTeamInviteEmail({ tenantName, inviterName, role, acceptUrl });
+    const emailResult = await sendEmail({ to: email, subject, html });
+    if (!emailResult.success) {
+      logger.warn(
+        'tenants/[id]/members/[memberId]/resend: falha ao enviar e-mail de convite',
+        { tenantId },
+        { error: emailResult.error }
+      );
+      return NextResponse.json(
+        {
+          error:
+            'Não foi possível reenviar o e-mail de convite. Verifique a configuração de e-mail (RESEND_API_KEY/EMAIL_FROM).',
+        },
+        { status: 502 }
+      );
     }
 
     await recordAuditAction(admin, {

@@ -4,7 +4,14 @@ import { requireRole, serverError } from '@/lib/api-auth';
 import { validateFields } from '@/lib/api-validate';
 import { recordAuditAction } from '@/lib/audit';
 import { rateLimit } from '@/lib/rate-limit';
-import { isDuplicateInviteError, isEmailDeliveryError, isInvitableRole } from '@/lib/team-invite';
+import {
+  buildConfirmUrl,
+  isDuplicateInviteError,
+  isInvitableRole,
+  resolveInviteEmailContext,
+} from '@/lib/team-invite';
+import { sendEmail } from '@/lib/email';
+import { buildTeamInviteEmail } from '@/lib/email-templates/team-invite';
 import { logger } from '@/lib/logger';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -66,41 +73,51 @@ export async function POST(
       return NextResponse.json({ error: 'Supabase admin não configurado.' }, { status: 500 });
     }
 
-    const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: {
-        invited_tenant_id: tenantId,
-        invited_role: role,
-        invited_can_configure_ai: canConfigureAI,
+    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: {
+        data: {
+          invited_tenant_id: tenantId,
+          invited_role: role,
+          invited_can_configure_ai: canConfigureAI,
+        },
       },
     });
 
-    if (inviteError) {
-      if (isDuplicateInviteError(inviteError)) {
+    if (linkError) {
+      if (isDuplicateInviteError(linkError)) {
         return NextResponse.json(
           { error: 'Este e-mail já está registrado no sistema. Não é possível reatribuí-lo automaticamente.' },
           { status: 409 }
         );
       }
-      if (isEmailDeliveryError(inviteError)) {
-        logger.warn(
-          'tenants/[id]/members/invite: entrega de e-mail indisponível',
-          { tenantId },
-          { error: inviteError.message, code: inviteError.code }
-        );
-        return NextResponse.json(
-          {
-            error:
-              'Não foi possível enviar o e-mail de convite. Verifique se o SMTP está configurado no projeto Supabase.',
-          },
-          { status: 502 }
-        );
-      }
-      return serverError('tenants/[id]/members/invite error', inviteError);
+      return serverError('tenants/[id]/members/invite error', linkError);
     }
 
-    const invitedUserId = inviteData.user?.id;
-    if (!invitedUserId) {
-      return serverError('tenants/[id]/members/invite: resposta sem usuário', inviteError);
+    const invitedUserId = linkData.user?.id;
+    const hashedToken = linkData.properties?.hashed_token;
+    if (!invitedUserId || !hashedToken) {
+      return serverError('tenants/[id]/members/invite: resposta sem link', linkError);
+    }
+    const acceptUrl = buildConfirmUrl(hashedToken, 'invite');
+
+    const { tenantName, inviterName } = await resolveInviteEmailContext(admin, tenantId, ctx.userId);
+    const { subject, html } = buildTeamInviteEmail({ tenantName, inviterName, role, acceptUrl });
+    const emailResult = await sendEmail({ to: email, subject, html });
+    if (!emailResult.success) {
+      logger.warn(
+        'tenants/[id]/members/invite: falha ao enviar e-mail de convite',
+        { tenantId },
+        { error: emailResult.error }
+      );
+      return NextResponse.json(
+        {
+          error:
+            'Convite criado, mas não foi possível enviar o e-mail. Verifique a configuração de e-mail e use "reenviar convite".',
+        },
+        { status: 502 }
+      );
     }
 
     await recordAuditAction(admin, {
