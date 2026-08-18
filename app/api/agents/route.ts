@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
         name,
         role_type,
         system_prompt,
-        model: model || 'deepseek-v4-flash',
+        model: model || 'minimax-m3',
         temperature: temperature !== undefined ? Number(temperature) : 0.2,
         max_discount: max_discount !== undefined ? Number(max_discount) : 10,
         tone: tone || 'negociador',

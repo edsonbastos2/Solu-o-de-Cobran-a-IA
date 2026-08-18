@@ -28,8 +28,15 @@ import {
   ArrowDown
 } from 'lucide-react';
 import { Pagination } from '@/components/pagination';
-import { AgentConfig, DEFAULT_AGENTS } from '@/lib/multi-agent';
+import { AgentConfig, DEFAULT_AGENTS } from '@/lib/multi-agent-types';
 import { useActiveTenant } from '@/hooks/use-active-tenant';
+import {
+  AIProvider,
+  DEFAULT_MODELS,
+  MODEL_WHITELISTS,
+  PROVIDER_LABELS,
+  isProvider,
+} from '@/lib/ai-config-client';
 
 const ROLE_OPTIONS = [
   { value: 'supervisor', label: 'Supervisor IA (Orquestrador)', color: 'bg-blue-600', icon: Shield },
@@ -40,14 +47,6 @@ const ROLE_OPTIONS = [
   { value: 'qualidade', label: 'Qualidade & Compliance (CDC)', color: 'bg-teal-600', icon: CheckCircle2 },
   { value: 'analise_credito', label: 'Análise de Crédito & Risco', color: 'bg-cyan-600', icon: TrendingUp },
   { value: 'custom', label: 'Especialista Personalizado', color: 'bg-indigo-600', icon: Bot },
-];
-
-const MODEL_OPTIONS = [
-  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (Ultrarrápido)' },
-  { value: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro (Raciocínio Avançado)' },
-  { value: 'gpt-4o-mini', label: 'OpenAI GPT-4o-mini' },
-  { value: 'claude-3-haiku', label: 'Anthropic Claude 3 Haiku' },
-  { value: 'llama3', label: 'Ollama Llama 3 (Local)' }
 ];
 
 const TONE_OPTIONS = [
@@ -84,7 +83,7 @@ interface SimulationResult {
 
 export default function AgentsPage() {
   const { user } = useAuth();
-  const { tenantQuery } = useActiveTenant();
+  const { tenantId, tenantQuery } = useActiveTenant();
 
   const [page, setPage] = useState(1);
   const limit = 10;
@@ -92,6 +91,21 @@ export default function AgentsPage() {
   const { data, mutate, isLoading } = useSWR(`/api/agents?page=${page}&limit=${limit}${tenantQuery ? `&${tenantQuery}` : ''}`, fetcher);
 
   const agents: AgentConfig[] = data?.agents || DEFAULT_AGENTS;
+
+  // Carrega a config de IA do tenant (bucket 'agents') para saber qual provedor
+  // está ativo e oferecer apenas modelos válidos no editor de agentes. Sem isso
+  // o dropdown mostrava modelos fixos inválidos (ex: gemini-3.5-flash).
+  const { data: tenantAiConfig } = useSWR(
+    tenantId ? `/api/tenants/${tenantId}/ai-config?${tenantQuery}` : null,
+    fetcher
+  );
+  const agentsBucket = tenantAiConfig?.agents;
+  const agentsProvider: AIProvider = isProvider(agentsBucket?.provider)
+    ? agentsBucket!.provider
+    : 'opencode';
+  const tenantDefaultModel = agentsBucket?.model || DEFAULT_MODELS[agentsProvider];
+  const isFreeFormModel = agentsProvider === 'ollama' || agentsProvider === 'openrouter';
+  const modelOptions = MODEL_WHITELISTS[agentsProvider] ?? [];
 
   // Editor Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -114,7 +128,8 @@ export default function AgentsPage() {
       color: 'bg-purple-600',
       description: '',
       system_prompt: 'Você é um especialista focado em fechar acordos de pagamento...',
-      model: 'gemini-3.5-flash',
+      // String vazia = "usar padrão do tenant" (cai no modelo do bucket agents).
+      model: '',
       temperature: 0.2,
       max_discount: 15,
       tone: 'negociador',
@@ -137,12 +152,19 @@ export default function AgentsPage() {
     setErrorMsg(null);
 
     try {
+      // Modelo vazio = "usar padrão do tenant": materializa o modelo do bucket
+      // agents para não persistir null nem um modelo inválido na base.
+      const payload: Partial<AgentConfig> = {
+        ...editingAgent,
+        model: editingAgent.model?.trim() ? editingAgent.model.trim() : tenantDefaultModel,
+      };
+
       if (editingAgent.id && !editingAgent.id.startsWith('agent-')) {
         // Update existing in DB
         const res = await fetchWithAuth(`/api/agents/${editingAgent.id}${tenantQuery ? `?${tenantQuery}` : ''}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(editingAgent)
+          body: JSON.stringify(payload)
         });
         if (!res.ok) {
           const err = await res.json();
@@ -153,7 +175,7 @@ export default function AgentsPage() {
         const res = await fetchWithAuth(`/api/agents${tenantQuery ? `?${tenantQuery}` : ''}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(editingAgent)
+          body: JSON.stringify(payload)
         });
         if (!res.ok) {
           const err = await res.json();
@@ -639,17 +661,33 @@ export default function AgentsPage() {
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Modelo de IA
                   </label>
-                  <select
-                    value={editingAgent.model || 'gemini-3.5-flash'}
-                    onChange={(e) => setEditingAgent({ ...editingAgent, model: e.target.value })}
-                    className="w-full bg-[#0e1014] border border-white/10 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    {MODEL_OPTIONS.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
+                  {isFreeFormModel ? (
+                    <input
+                      type="text"
+                      value={editingAgent.model || ''}
+                      onChange={(e) => setEditingAgent({ ...editingAgent, model: e.target.value })}
+                      placeholder={`Padrão do tenant: ${tenantDefaultModel}`}
+                      className="w-full bg-[#0e1014] border border-white/10 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  ) : (
+                    <select
+                      value={editingAgent.model || ''}
+                      onChange={(e) => setEditingAgent({ ...editingAgent, model: e.target.value })}
+                      className="w-full bg-[#0e1014] border border-white/10 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="">
+                        Usar padrão do tenant ({tenantDefaultModel})
                       </option>
-                    ))}
-                  </select>
+                      {modelOptions.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Provedor do tenant: <span className="text-slate-300">{PROVIDER_LABELS[agentsProvider]}</span>. Deixe em &ldquo;padrão&rdquo; para herdar o modelo do bucket Agentes.
+                  </p>
                 </div>
 
                 <div>

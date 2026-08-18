@@ -23,7 +23,7 @@ export default function SettingsPage() {
   const [telegramBotToken, setTelegramBotToken] = useState('');
 
   const [aiProvider, setAiProvider] = useState('opencode');
-  const [aiModel, setAiModel] = useState('deepseek-v4-flash');
+  const [aiModel, setAiModel] = useState('minimax-m3');
   const [opencodeKey, setOpencodeKey] = useState('');
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
@@ -40,18 +40,18 @@ export default function SettingsPage() {
 
   const defaultModelForProvider = (provider: string) => {
     switch (provider) {
-      case 'gemini': return 'gemini-3.5-flash';
+      case 'gemini': return 'gemini-2.5-flash';
       case 'openai': return 'gpt-4o-mini';
       case 'anthropic': return 'claude-3-haiku';
       case 'openrouter': return 'meta-llama/llama-3-8b-instruct:free';
       case 'ollama': return 'llama3';
-      default: return 'deepseek-v4-flash';
+      default: return 'minimax-m3';
     }
   };
 
   const modelIsValidForProvider = (provider: string, model: string) => {
-    if (provider === 'opencode') return ['deepseek-v4-pro', 'deepseek-v4-flash'].includes(model);
-    if (provider === 'gemini') return ['gemini-3.5-flash', 'gemini-3.1-pro'].includes(model);
+    if (provider === 'opencode') return ['minimax-m3', 'minimax-m2.7', 'glm-5.2', 'glm-5.3', 'kimi-k3', 'qwen3.7-max', 'qwen3.8-max', 'grok-4.5', 'deepseek-v4-pro'].includes(model);
+    if (provider === 'gemini') return ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'].includes(model);
     if (provider === 'openai') return ['gpt-4o', 'gpt-4o-mini'].includes(model);
     if (provider === 'anthropic') return ['claude-3-5-sonnet', 'claude-3-haiku'].includes(model);
     return Boolean(model);
@@ -412,14 +412,22 @@ export default function SettingsPage() {
                           >
                             {aiProvider === 'opencode' && (
                               <>
-                                <option value="deepseek-v4-pro">DeepSeek V4 Pro (Extração precisa)</option>
-                                <option value="deepseek-v4-flash">DeepSeek V4 Flash (Rápido/Econômico)</option>
+                                <option value="minimax-m3">MiniMax M3 (Padrão/Multimodal)</option>
+                                <option value="minimax-m2.7">MiniMax M2.7</option>
+                                <option value="glm-5.2">GLM 5.2</option>
+                                <option value="glm-5.3">GLM 5.3</option>
+                                <option value="kimi-k3">Kimi K3 (Raciocínio)</option>
+                                <option value="qwen3.7-max">Qwen 3.7 Max</option>
+                                <option value="qwen3.8-max">Qwen 3.8 Max</option>
+                                <option value="grok-4.5">Grok 4.5</option>
+                                <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
                               </>
                             )}
                             {aiProvider === 'gemini' && (
                               <>
-                                <option value="gemini-3.5-flash">Gemini 3.5 Flash (Rápido/Recomendado)</option>
-                                <option value="gemini-3.1-pro">Gemini 3.1 Pro (Mais inteligente)</option>
+                                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Rápido/Recomendado)</option>
+                                <option value="gemini-2.5-pro">Gemini 2.5 Pro (Mais inteligente)</option>
+                                <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
                               </>
                             )}
                             {aiProvider === 'openai' && (

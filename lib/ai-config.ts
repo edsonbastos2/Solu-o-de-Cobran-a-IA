@@ -33,8 +33,8 @@ export interface AIResolved {
 // Whitelists de modelos por provedor (consolida DEFAULT_MODELS/VALID_MODELS
 // que viviam em app/api/help-chat/route.ts). Usadas pelas rotas/UI.
 export const DEFAULT_MODELS: Record<AIProvider, string> = {
-  opencode: 'deepseek-v4-flash',
-  gemini: 'gemini-3.5-flash',
+  opencode: 'minimax-m3',
+  gemini: 'gemini-2.5-flash',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-haiku',
   openrouter: 'meta-llama/llama-3-8b-instruct:free',
@@ -43,8 +43,18 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
 };
 
 export const MODEL_WHITELISTS: Record<AIProvider, string[]> = {
-  opencode: ['deepseek-v4-pro', 'deepseek-v4-flash'],
-  gemini: ['gemini-3.5-flash', 'gemini-3.1-pro'],
+  opencode: [
+    'minimax-m3',
+    'minimax-m2.7',
+    'glm-5.2',
+    'glm-5.3',
+    'kimi-k3',
+    'qwen3.7-max',
+    'qwen3.8-max',
+    'grok-4.5',
+    'deepseek-v4-pro',
+  ],
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
   openai: ['gpt-4o', 'gpt-4o-mini'],
   anthropic: ['claude-3-5-sonnet', 'claude-3-haiku'],
   openrouter: ['meta-llama/llama-3-8b-instruct:free'],
@@ -290,4 +300,23 @@ export async function resolveAIConfig(opts: {
 // de env antes da migração. Rotas/UI não devem ler process.env diretamente.
 export function envKeyFor(provider: AIProvider): string | undefined {
   return ENV_KEY_FIELDS[provider];
+}
+
+/**
+ * Resolve o modelo efetivo de um agente: usa o modelo do agente apenas se ele
+ * for válido para o provedor resolvido do tenant; caso contrário, cai no modelo
+ * padrão resolvido. Evita enviar modelos inválidos (ex: gemini-3.5-flash) ou
+ * legados para o gateway errado, que retornaria 401. OpenRouter/Ollama aceitam
+ * free-form, então qualquer string não-vazia é preservada.
+ */
+export function resolveAgentModel(
+  agentModel: string | null | undefined,
+  resolved: AIResolved
+): string {
+  const whitelist = MODEL_WHITELISTS[resolved.provider] ?? [];
+  if (agentModel && whitelist.includes(agentModel)) return agentModel;
+  if (resolved.provider === 'openrouter' || resolved.provider === 'ollama') {
+    return agentModel || resolved.model;
+  }
+  return resolved.model;
 }

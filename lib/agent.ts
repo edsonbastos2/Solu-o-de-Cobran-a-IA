@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { resolveAIConfig } from '@/lib/ai-config';
+import { resolveAIConfig, resolveAgentModel } from '@/lib/ai-config';
 import { sendMessage } from '@/lib/messaging';
 import { getCollectionStage } from '@/lib/finance';
 import { fetchAgents } from '@/lib/multi-agent';
@@ -38,6 +38,21 @@ type AiProfile = {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Modelos de raciocínio (MiniMax, DeepSeek-R1, Qwen, Kimi, GLM, Grok)costumam
+ * prefixar a resposta com um bloco <think>...</think> contendo o chain-of-thought
+ * interno. Esse conteúdo NÃO pode chegar ao devedor no WhatsApp — é vazamento de
+ * prompt interno. Remove o bloco e trim o resultado.
+ */
+export function stripThinkBlocks(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
+    .trim();
 }
 
 const AGREEMENT_AMOUNT_RE = /\bR\$\s*[\d]{1,3}(?:\.[\d]{3})*(?:,[\d]{2})?\b/gi;
@@ -151,7 +166,7 @@ async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function callLLM(
+export async function callLLM(
   prompt: string,
   history: ConversationMessage[] | null,
   aiProvider: string,
@@ -357,7 +372,7 @@ Status do título: ${financialTitle?.status || 'não informado'}`;
 
   try {
     if (!supervisor || activeAgents.length <= 1) {
-      aiText = await callLLM(
+      aiText = stripThinkBlocks(await callLLM(
           `Você é um agente de cobrança. Cliente: ${caseData.name}. Dívida: R$ ${Number(caseData.updated_value || caseData.original_value).toFixed(2)}. Atraso: ${stage.diasAtraso} dias. Desconto Máximo: ${stage.effectiveMaxDiscount}%. ${domainContext} Responda a mensagem.`,
         currentHistory,
         aiProvider,
@@ -365,7 +380,7 @@ Status do título: ${financialTitle?.status || 'não informado'}`;
         apiKey,
         ollamaBaseUrl,
         0.2
-      );
+      ));
     } else {
       const supervisorPrompt = `${supervisor.system_prompt}
 
@@ -389,7 +404,7 @@ Retorne um JSON: { "selected_role": "role", "reasoning": "...", "guidance": "...
       };
 
       try {
-        const supResponse = await callLLM(supervisorPrompt, null, aiProvider, supervisor.model || aiModel, apiKey, ollamaBaseUrl, Number(supervisor.temperature) || 0.1, 'json_object');
+        const supResponse = await callLLM(supervisorPrompt, null, aiProvider, resolveAgentModel(supervisor.model, ai), apiKey, ollamaBaseUrl, Number(supervisor.temperature) || 0.1, 'json_object');
         const parsed = JSON.parse(supResponse.replace(/```json/g, '').replace(/```/g, '').trim());
         if (parsed.selected_role) routing = parsed;
       } catch (err) {
@@ -415,7 +430,7 @@ Se o acordo for fechado, inclua a tag [ACORDO_FECHADO]. Se necessitar intervenç
       let rawDraft: string;
       let usedTemplate = false;
       try {
-        rawDraft = await callLLM(specialistPrompt, currentHistory, aiProvider, specialist.model || aiModel, apiKey, ollamaBaseUrl, Number(specialist.temperature) || 0.2);
+        rawDraft = stripThinkBlocks(await callLLM(specialistPrompt, currentHistory, aiProvider, resolveAgentModel(specialist.model, ai), apiKey, ollamaBaseUrl, Number(specialist.temperature) || 0.2));
       } catch (specialistErr) {
         // Fallback: template ativo do tenant compatível com o estágio.
         logger.warn('Especialista falhou, usando template como fallback', undefined, { error: getErrorMessage(specialistErr), stage: stage.id });
@@ -437,10 +452,10 @@ RESPOSTA GERADA PELO ESPECIALISTA (${specialist.name}):
 
 Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "...", "corrected_response": "..." }`;
 
-          const qualityRes = await callLLM(qualityPrompt, null, aiProvider, qualidade.model || aiModel, apiKey, ollamaBaseUrl, Number(qualidade.temperature) || 0.1, 'json_object');
+          const qualityRes = await callLLM(qualityPrompt, null, aiProvider, resolveAgentModel(qualidade.model, ai), apiKey, ollamaBaseUrl, Number(qualidade.temperature) || 0.1, 'json_object');
           const qParsed = JSON.parse(qualityRes.replace(/```json/g, '').replace(/```/g, '').trim());
           if (qParsed.corrected_response && (!qParsed.approved || qParsed.complianceScore < 90)) {
-            aiText = qParsed.corrected_response;
+            aiText = stripThinkBlocks(qParsed.corrected_response);
           }
         } catch (qErr) {
           logger.warn('Quality agent audit skipped due to parse error', undefined, { error: getErrorMessage(qErr) });

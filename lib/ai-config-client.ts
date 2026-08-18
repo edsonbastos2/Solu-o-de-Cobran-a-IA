@@ -27,8 +27,8 @@ export const PROVIDER_LABELS: Record<AIProvider, string> = {
 };
 
 export const DEFAULT_MODELS: Record<AIProvider, string> = {
-  opencode: 'deepseek-v4-flash',
-  gemini: 'gemini-3.5-flash',
+  opencode: 'minimax-m3',
+  gemini: 'gemini-2.5-flash',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-haiku',
   openrouter: 'meta-llama/llama-3-8b-instruct:free',
@@ -37,8 +37,18 @@ export const DEFAULT_MODELS: Record<AIProvider, string> = {
 };
 
 export const MODEL_WHITELISTS: Record<AIProvider, string[]> = {
-  opencode: ['deepseek-v4-pro', 'deepseek-v4-flash'],
-  gemini: ['gemini-3.5-flash', 'gemini-3.1-pro'],
+  opencode: [
+    'minimax-m3',
+    'minimax-m2.7',
+    'glm-5.2',
+    'glm-5.3',
+    'kimi-k3',
+    'qwen3.7-max',
+    'qwen3.8-max',
+    'grok-4.5',
+    'deepseek-v4-pro',
+  ],
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
   openai: ['gpt-4o', 'gpt-4o-mini'],
   anthropic: ['claude-3-5-sonnet', 'claude-3-haiku'],
   openrouter: ['meta-llama/llama-3-8b-instruct:free'],
