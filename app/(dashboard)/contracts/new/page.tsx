@@ -150,12 +150,12 @@ export default function NewContractPage() {
                   <p className="text-xs text-gray-500 mt-1">O arquivo será lido com IA.</p>
                 </label>
               ) : (
-                <div className="flex items-center justify-between p-4 border border-blue-200 bg-blue-50 rounded-lg">
+                <div className="flex items-center justify-between p-4 border border-emerald-200 bg-emerald-50 rounded-lg">
                   <div className="flex items-center">
-                    <File className="w-6 h-6 text-blue-600 mr-3" />
-                    <span className="text-sm font-medium text-blue-900 truncate max-w-[200px]">{file.name}</span>
+                    <File className="w-6 h-6 text-emerald-600 mr-3" />
+                    <span className="text-sm font-medium text-emerald-900 truncate max-w-[200px]">{file.name}</span>
                   </div>
-                  <button type="button" onClick={removeFile} aria-label="Remover arquivo selecionado" className="p-1 hover:bg-blue-100 rounded-full transition-colors text-blue-600">
+                  <button type="button" onClick={removeFile} aria-label="Remover arquivo selecionado" className="p-1 hover:bg-emerald-100 rounded-full transition-colors text-emerald-600">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
@@ -179,7 +179,7 @@ export default function NewContractPage() {
             <label htmlFor="contract-text" className="block text-sm font-medium text-gray-700 mb-2">Cole o texto do contrato</label>
             <textarea
               id="contract-text"
-              className="flex-1 min-h-[200px] w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono text-gray-700"
+              className="flex-1 min-h-[200px] w-full p-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm font-mono text-gray-700"
               placeholder="Cole aqui o conteúdo do contrato..."
               value={contractText}
               onChange={(e) => setContractText(e.target.value)}
@@ -188,7 +188,7 @@ export default function NewContractPage() {
             <button
               onClick={handleExtract}
               disabled={isExtracting || (!contractText.trim() && !file)}
-              className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+              className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
             >
               {isExtracting ? (
                 <>
@@ -242,7 +242,7 @@ export default function NewContractPage() {
                     id="contract-policy"
                     value={selectedPolicyId}
                     onChange={(e) => setSelectedPolicyId(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-500 bg-white"
                   >
                     <option value="">-- Nenhuma Política --</option>
                     {policies.map(p => (
@@ -254,7 +254,7 @@ export default function NewContractPage() {
                 <button
                   onClick={handleSave}
                   disabled={isSaving}
-                  className="mt-8 w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
+                  className="mt-8 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50"
                 >
                   {isSaving ? (
                     <>

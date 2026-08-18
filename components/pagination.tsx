@@ -54,12 +54,12 @@ export function Pagination({
     
     if (isDark) {
       return `${baseClass} ${isActive 
-        ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700 z-10' 
+        ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700 z-10' 
         : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'}`;
     }
     
     return `${baseClass} ${isActive 
-      ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700 z-10' 
+      ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700 z-10' 
       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`;
   };
 

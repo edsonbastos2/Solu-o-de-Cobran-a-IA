@@ -296,7 +296,7 @@ export default function CasesPage() {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+            <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap">
               <thead className="bg-slate-100/70 text-slate-500 font-semibold uppercase text-xs tracking-wider border-b border-slate-200">
                 <tr>
                   <th scope="col" className="px-6 py-3.5">Devedor</th>
@@ -312,7 +312,7 @@ export default function CasesPage() {
               <tbody className="divide-y divide-slate-200/70 bg-white">
                 {error ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-red-600">
+                    <td colSpan={7} className="px-6 py-12 text-center text-red-600 whitespace-normal">
                       <div className="max-w-sm mx-auto flex flex-col items-center gap-2">
                         <AlertCircle className="w-8 h-8" />
                         <p className="font-semibold">Não foi possível carregar a lista de casos</p>
@@ -329,7 +329,7 @@ export default function CasesPage() {
                   </tr>
                 ) : loading && cases.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500 whitespace-normal">
                       <div className="flex flex-col items-center gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-emerald-600" />
                         <span>Carregando casos em tempo real...</span>
@@ -338,7 +338,7 @@ export default function CasesPage() {
                   </tr>
                 ) : cases.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500 whitespace-normal">
                       <div className="max-w-sm mx-auto flex flex-col items-center">
                         <FolderKanban className="w-12 h-12 text-slate-300 mb-3" />
                         <p className="font-semibold text-slate-700 text-base">Nenhum caso encontrado</p>
@@ -359,7 +359,7 @@ export default function CasesPage() {
                       <tr key={c.id} className="hover:bg-slate-50/80 transition-colors group">
                         {/* Devedor */}
                         <td className="px-6 py-4">
-                          <div className="font-semibold text-slate-900 text-sm">{c.name}</div>
+                          <div className="font-semibold text-slate-900 text-sm truncate max-w-[220px]" title={c.name}>{c.name}</div>
                           {c.debtor_document && (
                             <div className="text-xs text-slate-400 mt-0.5 font-mono">
                               CPF/CNPJ: {c.debtor_document}
@@ -370,11 +370,11 @@ export default function CasesPage() {
                         {/* Contato */}
                         <td className="px-6 py-4">
                           <div className="text-slate-800 font-medium text-sm flex items-center gap-1.5">
-                            <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                            <MessageSquare className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                             {formatPhoneInput(c.phone)}
                           </div>
                           {c.debtor_email && (
-                            <div className="text-xs text-slate-400 truncate max-w-[180px] mt-0.5">
+                            <div className="text-xs text-slate-400 truncate max-w-[180px] mt-0.5" title={c.debtor_email}>
                               {c.debtor_email}
                             </div>
                           )}

@@ -114,7 +114,7 @@ export default function NegotiationsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+            <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap">
               <thead className="bg-slate-100/70 text-slate-500 font-semibold uppercase text-xs tracking-wider border-b border-slate-200">
                 <tr>
                   <th scope="col" className="px-6 py-3.5">Devedor</th>
@@ -152,7 +152,7 @@ export default function NegotiationsPage() {
                   </tr>
                 ) : negotiations.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500 whitespace-normal">
                       <div className="max-w-sm mx-auto flex flex-col items-center">
                         <Handshake className="w-12 h-12 text-slate-300 mb-3" />
                         <p className="font-semibold text-slate-700 text-base">Nenhum acordo encontrado</p>
@@ -170,7 +170,7 @@ export default function NegotiationsPage() {
                     return (
                       <tr key={n.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-6 py-4">
-                          <div className="font-semibold text-slate-900 text-sm">{debtorName}</div>
+                          <div className="font-semibold text-slate-900 text-sm truncate max-w-[220px]" title={debtorName}>{debtorName}</div>
                           {n.cases && (
                             <div className="text-xs text-slate-400 mt-0.5">Caso vinculado</div>
                           )}

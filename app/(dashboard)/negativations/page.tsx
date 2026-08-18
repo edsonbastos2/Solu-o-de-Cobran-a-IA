@@ -208,7 +208,7 @@ export default function NegativationsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+            <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap">
               <thead className="border-b border-slate-200 bg-slate-100/70 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                 <tr>
                   <th className="px-6 py-3.5">Situação</th>
@@ -249,14 +249,14 @@ export default function NegativationsPage() {
                           {STATUS_META[n.status].label}
                         </span>
                         {n.external_reference && (
-                          <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-mono text-slate-400">
+                           <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 max-w-[140px] truncate" title={n.external_reference}>
                             <ExternalLink className="h-3 w-3" /> {n.external_reference}
                           </div>
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-medium text-slate-800">{n.clients?.name || '—'}</div>
-                        {n.clients?.document && <div className="text-xs font-mono text-slate-400">{n.clients.document}</div>}
+                        <div className="font-medium text-slate-800 truncate max-w-[200px]" title={n.clients?.name || undefined}>{n.clients?.name || '—'}</div>
+                        {n.clients?.document && <div className="text-xs font-mono text-slate-400 truncate max-w-[160px]" title={n.clients.document}>{n.clients.document}</div>}
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-500">
                         {n.financial_titles ? (

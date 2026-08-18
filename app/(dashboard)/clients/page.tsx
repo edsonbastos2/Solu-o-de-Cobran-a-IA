@@ -88,7 +88,7 @@ const handleSaveEdit = async (id: string) => {
           {isAdmin && (
             <button
               onClick={() => setShowNewClient(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors"
             >
               <UserPlus className="w-4 h-4" />
               Novo Cliente
@@ -105,13 +105,13 @@ const handleSaveEdit = async (id: string) => {
                 id="clients-search"
                 type="text" 
                 placeholder="Buscar por nome ou documento..." 
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600">
+            <table className="w-full text-left text-sm text-gray-600 whitespace-nowrap">
               <thead className="bg-gray-50/50 text-gray-500 font-medium">
                 <tr>
                   <th scope="col" className="px-6 py-4">Nome</th>
@@ -130,7 +130,7 @@ const handleSaveEdit = async (id: string) => {
                   </tr>
                 ) : clients.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500 flex flex-col items-center">
+                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500 flex flex-col items-center whitespace-normal">
                       <Users className="w-12 h-12 text-gray-300 mb-3" />
                       <p>Nenhum cliente encontrado.</p>
                       <p className="text-sm mt-1">Os clientes são criados automaticamente ao importar um contrato via IA.</p>
@@ -146,7 +146,7 @@ const handleSaveEdit = async (id: string) => {
                               type="text" 
                               value={editData.name} 
                               onChange={(e) => setEditData({...editData, name: e.target.value})}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             />
                           </td>
                           <td className="px-6 py-4">{client.document}</td>
@@ -155,7 +155,7 @@ const handleSaveEdit = async (id: string) => {
                               type="email" 
                               value={editData.email} 
                               onChange={(e) => setEditData({...editData, email: e.target.value})}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             />
                           </td>
                           <td className="px-6 py-4">
@@ -165,7 +165,7 @@ const handleSaveEdit = async (id: string) => {
                               onChange={(e) => setEditData({...editData, phone: formatPhoneInput(e.target.value)})}
                               placeholder="(00) 00000-0000"
                               maxLength={15}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                             />
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -193,16 +193,16 @@ const handleSaveEdit = async (id: string) => {
                         </>
                       ) : (
                         <>
-                          <td className="px-6 py-4 font-medium text-gray-900">{client.name}</td>
-                          <td className="px-6 py-4">{client.document}</td>
-                          <td className="px-6 py-4">{client.email || '-'}</td>
+                          <td className="px-6 py-4 font-medium text-gray-900 max-w-[240px] truncate" title={client.name || undefined}>{client.name}</td>
+                          <td className="px-6 py-4 font-mono text-xs max-w-[200px] truncate" title={client.document || undefined}>{client.document}</td>
+                          <td className="px-6 py-4 max-w-[240px] truncate" title={client.email || undefined}>{client.email || '-'}</td>
                           <td className="px-6 py-4">{client.phone ? formatPhoneInput(client.phone) : '-'}</td>
 <td className="px-6 py-4 text-right">
                             <div className="flex justify-end gap-1">
                               {isAdmin && (
                                 <button 
                                   onClick={() => handleEditClick(client)}
-                                   className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                                    title="Editar Cliente"
                                    aria-label={`Editar cliente ${client.name || client.id}`}
                                 >

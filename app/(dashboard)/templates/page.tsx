@@ -345,7 +345,7 @@ export default function TemplatesPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+            <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap">
               <thead className="border-b border-slate-200 bg-slate-100/70 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                 <tr>
                   <th className="px-6 py-3.5">Nome</th>
@@ -381,7 +381,7 @@ export default function TemplatesPage() {
                 ) : (
                   templates.map((t) => (
                     <tr key={t.id} className="transition-colors hover:bg-slate-50/80">
-                      <td className="px-6 py-4 font-semibold text-slate-800">{t.name}</td>
+                      <td className="px-6 py-4 font-semibold text-slate-800 max-w-[220px] truncate" title={t.name}>{t.name}</td>
                       <td className="px-6 py-4">
                         <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
                           {STAGE_OPTIONS.find((o) => o.value === t.stage)?.label || t.stage}

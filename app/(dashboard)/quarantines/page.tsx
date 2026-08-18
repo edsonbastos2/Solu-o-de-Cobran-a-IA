@@ -242,7 +242,7 @@ export default function QuarantinesPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+            <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap">
               <thead className="border-b border-slate-200 bg-slate-100/70 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                 <tr>
                   <th className="px-6 py-3.5">Situação</th>
@@ -291,7 +291,7 @@ export default function QuarantinesPage() {
                             {REASON_META[q.reason]?.label || q.reason}
                           </div>
                         </td>
-                        <td className="px-6 py-4 font-mono text-xs text-slate-500">{q.case_id || '—'}</td>
+                        <td className="px-6 py-4 font-mono text-xs text-slate-500 max-w-[180px] truncate" title={q.case_id || undefined}>{q.case_id || '—'}</td>
                         <td className="px-6 py-4 text-xs text-slate-500">
                           {q.expires_at ? new Date(q.expires_at).toLocaleString('pt-BR') : q.status === 'permanent_block' ? 'Nunca' : '—'}
                         </td>

@@ -209,7 +209,7 @@ export default function ProtestsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+            <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap">
               <thead className="border-b border-slate-200 bg-slate-100/70 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                 <tr>
                   <th className="px-6 py-3.5">Situação</th>
@@ -250,14 +250,14 @@ export default function ProtestsPage() {
                           {STATUS_META[p.status].label}
                         </span>
                         {p.external_reference && (
-                          <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-mono text-slate-400">
+                           <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 max-w-[140px] truncate" title={p.external_reference}>
                             <ExternalLink className="h-3 w-3" /> {p.external_reference}
                           </div>
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="font-medium text-slate-800">{p.clients?.name || '—'}</div>
-                        {p.clients?.document && <div className="text-xs font-mono text-slate-400">{p.clients.document}</div>}
+                        <div className="font-medium text-slate-800 truncate max-w-[200px]" title={p.clients?.name || undefined}>{p.clients?.name || '—'}</div>
+                        {p.clients?.document && <div className="text-xs font-mono text-slate-400 truncate max-w-[160px]" title={p.clients.document}>{p.clients.document}</div>}
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-500">
                         {p.financial_titles ? (

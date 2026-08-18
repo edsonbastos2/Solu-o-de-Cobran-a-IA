@@ -33,7 +33,7 @@ export default function ContractsPage() {
           
           <Link
             href={`/contracts/new${tenantPath}`}
-            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+            className="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium text-sm"
           >
             <Plus className="w-4 h-4 mr-2" />
             Novo Contrato (via IA)
@@ -49,13 +49,13 @@ export default function ContractsPage() {
                 id="contracts-search"
                 type="text" 
                 placeholder="Buscar por cliente, documento ou número..." 
-                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
               />
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600">
+            <table className="w-full text-left text-sm text-gray-600 whitespace-nowrap">
               <thead className="bg-gray-50/50 text-gray-500 font-medium">
                 <tr>
                   <th scope="col" className="px-6 py-4">Cliente</th>
@@ -87,23 +87,23 @@ export default function ContractsPage() {
                   </tr>
                 ) : contracts.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500 flex flex-col items-center">
+                     <td colSpan={5} className="px-6 py-12 text-center text-gray-500 flex flex-col items-center whitespace-normal">
                       <FileText className="w-12 h-12 text-gray-300 mb-3" />
                       <p>Nenhum contrato encontrado.</p>
-                       <Link href={`/contracts/new${tenantPath}`} className="text-blue-600 hover:underline mt-1">Importe um agora com IA</Link>
+                        <Link href={`/contracts/new${tenantPath}`} className="text-emerald-600 hover:underline mt-1">Importe um agora com IA</Link>
                     </td>
                   </tr>
                 ) : (
                   contracts.map((contract) => (
                     <tr key={contract.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-gray-900">{contract.clients?.name}</td>
-                      <td className="px-6 py-4">{contract.clients?.document}</td>
+                      <td className="px-6 py-4 font-medium text-gray-900 max-w-[240px] truncate" title={contract.clients?.name || undefined}>{contract.clients?.name}</td>
+                      <td className="px-6 py-4 max-w-[200px] truncate font-mono text-xs" title={contract.clients?.document || undefined}>{contract.clients?.document}</td>
                       <td className="px-6 py-4">{contract.contract_number || '-'}</td>
                       <td className="px-6 py-4 capitalize">{contract.type || 'Geral'}</td>
                       <td className="px-6 py-4 text-right">
                         <Link 
                           href={`/contracts/${contract.id}${tenantPath}`}
-                          className="inline-flex items-center justify-center p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="inline-flex items-center justify-center p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                           title="Ver detalhes"
                           aria-label={`Ver detalhes do contrato ${contract.contract_number || contract.id}`}
                         >

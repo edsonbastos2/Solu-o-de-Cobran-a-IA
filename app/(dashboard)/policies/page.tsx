@@ -100,7 +100,7 @@ const handleSaveClick = async () => {
         <div className="flex items-center justify-between mb-8">
            <div data-tour="policies-module">
             <h1 className="text-2xl font-bold text-gray-900 flex items-center">
-              <ShieldAlert className="w-6 h-6 mr-2 text-blue-600" />
+              <ShieldAlert className="w-6 h-6 mr-2 text-emerald-600" />
               Políticas de Cobrança
             </h1>
             <p className="text-gray-500 mt-1">Gerencie as regras padrão de cobrança da sua empresa.</p>
@@ -108,7 +108,7 @@ const handleSaveClick = async () => {
           <button 
             onClick={handleCreateClick}
             disabled={isCreating}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors disabled:opacity-50"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center transition-colors disabled:opacity-50"
           >
             <Plus className="w-4 h-4 mr-2" />
             Nova Política
@@ -117,7 +117,7 @@ const handleSaveClick = async () => {
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600">
+            <table className="w-full text-left text-sm text-gray-600 whitespace-nowrap">
               <thead className="bg-gray-50 text-gray-700 font-semibold border-b border-gray-200">
                 <tr>
                   <th scope="col" className="px-6 py-4">Nome da Política</th>
@@ -130,14 +130,14 @@ const handleSaveClick = async () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {isCreating && (
-                  <tr className="bg-blue-50/50">
+                  <tr className="bg-emerald-50/50">
                     <td className="px-6 py-4">
                       <input 
                         type="text" 
                         value={editData.name || ''} 
                         onChange={(e) => setEditData({...editData, name: e.target.value})}
                         placeholder="Nome da política"
-                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-emerald-500"
                       />
                     </td>
                     <td className="px-6 py-4">
@@ -154,7 +154,7 @@ const handleSaveClick = async () => {
                     </td>
                     <td className="px-6 py-4">
                       <label className="flex items-center space-x-2 text-xs mb-1">
-                        <input type="checkbox" checked={editData.negative_allowed || false} onChange={(e) => setEditData({...editData, negative_allowed: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
+                        <input type="checkbox" checked={editData.negative_allowed || false} onChange={(e) => setEditData({...editData, negative_allowed: e.target.checked})} className="rounded text-emerald-600 focus:ring-emerald-500" />
                         <span>Permitir</span>
                       </label>
                       {editData.negative_allowed && (
@@ -165,7 +165,7 @@ const handleSaveClick = async () => {
                     </td>
                     <td className="px-6 py-4">
                       <label className="flex items-center space-x-2 text-xs mb-1">
-                        <input type="checkbox" checked={editData.protest_allowed || false} onChange={(e) => setEditData({...editData, protest_allowed: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
+                        <input type="checkbox" checked={editData.protest_allowed || false} onChange={(e) => setEditData({...editData, protest_allowed: e.target.checked})} className="rounded text-emerald-600 focus:ring-emerald-500" />
                         <span>Permitir</span>
                       </label>
                       {editData.protest_allowed && (
@@ -176,7 +176,7 @@ const handleSaveClick = async () => {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <label className="flex items-center justify-center space-x-2 text-xs">
-                        <input type="checkbox" checked={editData.active !== false} onChange={(e) => setEditData({...editData, active: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
+                        <input type="checkbox" checked={editData.active !== false} onChange={(e) => setEditData({...editData, active: e.target.checked})} className="rounded text-emerald-600 focus:ring-emerald-500" />
                         <span>Ativo</span>
                       </label>
                     </td>
@@ -209,7 +209,7 @@ const handleSaveClick = async () => {
                               type="text" 
                               value={editData.name || ''} 
                               onChange={(e) => setEditData({...editData, name: e.target.value})}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500"
+                              className="w-full border border-gray-300 rounded px-2 py-1 text-sm focus:ring-2 focus:ring-emerald-500"
                             />
                           </td>
                           <td className="px-6 py-4">
@@ -226,7 +226,7 @@ const handleSaveClick = async () => {
                           </td>
                           <td className="px-6 py-4">
                             <label className="flex items-center space-x-2 text-xs mb-1">
-                              <input type="checkbox" checked={editData.negative_allowed || false} onChange={(e) => setEditData({...editData, negative_allowed: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
+                              <input type="checkbox" checked={editData.negative_allowed || false} onChange={(e) => setEditData({...editData, negative_allowed: e.target.checked})} className="rounded text-emerald-600 focus:ring-emerald-500" />
                               <span>Permitir</span>
                             </label>
                             {editData.negative_allowed && (
@@ -237,7 +237,7 @@ const handleSaveClick = async () => {
                           </td>
                           <td className="px-6 py-4">
                             <label className="flex items-center space-x-2 text-xs mb-1">
-                              <input type="checkbox" checked={editData.protest_allowed || false} onChange={(e) => setEditData({...editData, protest_allowed: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
+                              <input type="checkbox" checked={editData.protest_allowed || false} onChange={(e) => setEditData({...editData, protest_allowed: e.target.checked})} className="rounded text-emerald-600 focus:ring-emerald-500" />
                               <span>Permitir</span>
                             </label>
                             {editData.protest_allowed && (
@@ -248,7 +248,7 @@ const handleSaveClick = async () => {
                           </td>
                           <td className="px-6 py-4 text-center">
                             <label className="flex items-center justify-center space-x-2 text-xs">
-                              <input type="checkbox" checked={editData.active !== false} onChange={(e) => setEditData({...editData, active: e.target.checked})} className="rounded text-blue-600 focus:ring-blue-500" />
+                              <input type="checkbox" checked={editData.active !== false} onChange={(e) => setEditData({...editData, active: e.target.checked})} className="rounded text-emerald-600 focus:ring-emerald-500" />
                               <span>Ativo</span>
                             </label>
                           </td>
@@ -263,7 +263,7 @@ const handleSaveClick = async () => {
                         </>
                       ) : (
                         <>
-                          <td className="px-6 py-4 font-medium text-gray-900">{policy.name}</td>
+                          <td className="px-6 py-4 font-medium text-gray-900 max-w-[220px] truncate" title={policy.name}>{policy.name}</td>
                           <td className="px-6 py-4 text-xs space-y-1">
                             <div><span className="text-gray-500">Juros:</span> {policy.interest_rate || 0}%</div>
                             <div><span className="text-gray-500">Multa:</span> {policy.penalty_rate || 0}%</div>
@@ -292,7 +292,7 @@ const handleSaveClick = async () => {
                           <td className="px-6 py-4 text-right">
                             <button 
                               onClick={() => handleEditClick(policy)}
-                              className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
                               title="Editar"
                               aria-label={`Editar política ${policy.name}`}
                             >

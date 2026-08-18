@@ -247,9 +247,9 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2 text-slate-300">
-                          <Mail className="w-3.5 h-3.5 text-slate-500" />
-                          {profile.email || 'Não informado'}
+                        <div className="flex items-center gap-2 text-slate-300 min-w-0 max-w-[260px]">
+                          <Mail className="w-3.5 h-3.5 shrink-0 text-slate-500" />
+                          <span className="truncate" title={profile.email || undefined}>{profile.email || 'Não informado'}</span>
                         </div>
                         <div className="flex items-center gap-2 text-slate-400 text-xs">
                           <Phone className="w-3.5 h-3.5 text-slate-500" />
