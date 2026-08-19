@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { resolveAIConfig, resolveAgentModel } from '@/lib/ai-config';
-import { sendMessage } from '@/lib/messaging';
+import { sendCaseMessage } from '@/lib/channels/message-service';
 import { getCollectionStage } from '@/lib/finance';
 import { fetchAgents } from '@/lib/multi-agent';
 import { recordAuditAction } from '@/lib/audit';
@@ -269,7 +269,21 @@ export async function callLLM(
   return "";
 }
 
-export async function processChat(caseId: string, message: string, database?: SupabaseClient, tenantId?: string) {
+export interface ProcessChatOptions {
+  /**
+   * Quando false, não persiste a mensagem do devedor em messages — o caller
+   * (lib/channels/inbound.ts) já a registrou com channel/send_status.
+   */
+  persistUserMessage?: boolean;
+}
+
+export async function processChat(
+  caseId: string,
+  message: string,
+  database?: SupabaseClient,
+  tenantId?: string,
+  options?: ProcessChatOptions
+) {
   if (!database) {
     throw new Error("Supabase não configurado.");
   }
@@ -343,13 +357,15 @@ Status do título: ${financialTitle?.status || 'não informado'}`;
 
   if (historyError) throw historyError;
 
-  const { error: userMessageError } = await database.from('messages').insert({
-    tenant_id: resolvedTenantId,
-    case_id: caseId,
-    role: 'user',
-    content: message.trim()
-  });
-  if (userMessageError) throw userMessageError;
+  if (options?.persistUserMessage !== false) {
+    const { error: userMessageError } = await database.from('messages').insert({
+      tenant_id: resolvedTenantId,
+      case_id: caseId,
+      role: 'user',
+      content: message.trim()
+    });
+    if (userMessageError) throw userMessageError;
+  }
 
   await recordAuditAction(database, {
     tenantId: resolvedTenantId,
@@ -471,14 +487,6 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
     throw new Error(`Erro na IA: ${getErrorMessage(error)}`);
   }
 
-  const { error: aiMessageError } = await database.from('messages').insert({
-    tenant_id: resolvedTenantId,
-    case_id: caseId,
-    role: 'ai',
-    content: aiText
-  });
-  if (aiMessageError) throw aiMessageError;
-
   await recordAuditAction(database, {
     tenantId: resolvedTenantId,
     entityType: 'message',
@@ -494,22 +502,43 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
     .replace(/\[ACORDO_FECHADO\]/g, '')
     .trim();
 
-  if (caseData.phone || caseData.telegram_chat_id) {
-    const destination = caseData.telegram_chat_id || caseData.phone;
-    sendMessage(destination, cleanAiText, caseData.user_id).catch(async err => {
-      logger.error('Background message send failed', { tenantId: resolvedTenantId, caseId }, { error: getErrorMessage(err) });
-
-      if (database) {
-        const provider = caseData.telegram_chat_id ? 'Telegram' : 'WhatsApp';
-        await database.from('messages').insert({
-          tenant_id: resolvedTenantId,
-          case_id: caseId,
-          role: 'system',
-          content: `Falha ao enviar mensagem via ${provider}. Verifique suas configurações.`
-        });
-      }
-    });
+  // Persistência síncrona da resposta da IA: a row de messages (role 'ai',
+  // content cleanAiText, send_status 'pending') é gravada ANTES de responder,
+  // e apenas o envio externo (sendCaseMessage) roda em background. O
+  // sendCaseMessage atualiza essa mesma row com o resultado (sent/failed)
+  // via persistMessageId — exatamente uma row por resposta. Sem destino de
+  // canal, a row permanece como histórico da conversa (send_status null).
+  const { data: pendingMessage, error: pendingMessageError } = await database
+    .from('messages')
+    .insert({
+      tenant_id: resolvedTenantId,
+      case_id: caseId,
+      role: 'ai',
+      content: cleanAiText,
+      send_status: 'pending',
+    })
+    .select('id')
+    .single();
+  if (pendingMessageError) {
+    // Sem a row âncora, o envio em background mantém o comportamento legado
+    // (INSERT no message-service ao concluir o envio).
+    logger.error(
+      'Falha ao persistir resposta da IA de forma síncrona',
+      { tenantId: resolvedTenantId, caseId },
+      { error: getErrorMessage(pendingMessageError) }
+    );
   }
+
+  void sendCaseMessage({
+    caseId,
+    content: cleanAiText,
+    database,
+    tenantId: resolvedTenantId,
+    senderRole: 'ai',
+    persistMessageId: pendingMessage?.id,
+  }).catch(err => {
+    logger.error('Background message send failed', { tenantId: resolvedTenantId, caseId }, { error: getErrorMessage(err) });
+  });
 
   let newStatus = caseData.status;
   if (newStatus === 'not_started') newStatus = 'in_negotiation';

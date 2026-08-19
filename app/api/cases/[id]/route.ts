@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
 import { calculateUpdatedValue, getCollectionStage } from '@/lib/finance';
 import { recordAuditAction } from '@/lib/audit';
+import { resolveCaseClientId } from '@/lib/channels/message-service';
 import { CaseWithRelations } from '@/lib/types';
 
 const ALLOWED_STATUSES = ['not_started', 'in_negotiation', 'needs_attention', 'closed'] as const;
@@ -12,6 +13,8 @@ const STATUS_TRANSITIONS: Record<string, Set<string>> = {
   closed: new Set(['closed']),
 };
 
+const ALLOWED_ACTIVE_CHANNELS = ['whatsapp', 'telegram'] as const;
+
 const CASE_SELECT = `
   *,
   financial_titles (
@@ -21,7 +24,8 @@ const CASE_SELECT = `
     created_at, updated_at,
     contracts (
       id, tenant_id, client_id, contract_number, type,
-      clients (id, tenant_id, name, document, phone, email, address)
+      clients (id, tenant_id, name, document, phone, email, address,
+        client_channels (id, channel, username, verified_at))
     )
   )
 `;
@@ -104,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'Corpo inválido.' }, { status: 400 });
     }
 
-    const allowed = ['status', 'assigned_user_id'];
+    const allowed = ['status', 'assigned_user_id', 'active_channel'];
     const fields = Object.keys(body);
     if (fields.some((field) => !allowed.includes(field))) {
       return NextResponse.json({ error: 'Campo não permitido para atualização do caso.' }, { status: 400 });
@@ -146,6 +150,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       update.assigned_user_id = body.assigned_user_id;
     }
+    if ('active_channel' in body) {
+      const channelValue = body.active_channel;
+      if (
+        channelValue !== null &&
+        (typeof channelValue !== 'string' || !ALLOWED_ACTIVE_CHANNELS.includes(channelValue as (typeof ALLOWED_ACTIVE_CHANNELS)[number]))
+      ) {
+        return NextResponse.json(
+          { error: 'Canal ativo inválido. Use whatsapp, telegram ou null.' },
+          { status: 400 }
+        );
+      }
+      const activeChannel = channelValue as (typeof ALLOWED_ACTIVE_CHANNELS)[number] | null;
+      if (activeChannel) {
+        // O canal ativo exige vinculação real do cliente (ADR-002). O cliente
+        // do caso é resolvido via debtor_id ou título financeiro (cases não
+        // possui coluna client_id).
+        const clientId = await resolveCaseClientId(ctx.supabase, ctx.tenantId, before);
+        let hasChannel = false;
+        if (clientId) {
+          const { data: binding, error: bindingError } = await ctx.supabase
+            .from('client_channels')
+            .select('id')
+            .eq('tenant_id', ctx.tenantId)
+            .eq('client_id', clientId)
+            .eq('channel', activeChannel)
+            .limit(1);
+          if (bindingError) return serverError('case PATCH channel lookup error', bindingError);
+          hasChannel = Boolean(binding && binding.length > 0);
+        }
+        if (!hasChannel) {
+          return NextResponse.json(
+            { error: `Cliente não possui o canal ${activeChannel} vinculado.` },
+            { status: 422 }
+          );
+        }
+      }
+      update.active_channel = activeChannel;
+    }
 
     const { data: updatedCase, error } = await ctx.supabase
       .from('cases')
@@ -156,19 +198,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .single();
     if (error) return serverError('case PATCH update error', error);
 
-    const action = 'status' in body && before.status !== updatedCase.status
-      ? (updatedCase.status === 'closed' ? 'CASE_CLOSED' : 'STATUS_CHANGE')
-      : 'CASE_ASSIGNMENT_CHANGE';
+    const channelChanged =
+      'active_channel' in body && before.active_channel !== updatedCase.active_channel;
+    const action = channelChanged
+      ? 'CASE_CHANNEL_CHANGED'
+      : 'status' in body && before.status !== updatedCase.status
+        ? (updatedCase.status === 'closed' ? 'CASE_CLOSED' : 'STATUS_CHANGE')
+        : 'CASE_ASSIGNMENT_CHANGE';
     await recordAuditAction(ctx.supabase, {
       tenantId: ctx.tenantId,
       entityType: 'case',
       entityId: id,
       caseId: id,
       actorUserId: ctx.userId,
+      actorRole: ctx.role,
       action,
       before,
       after: updatedCase,
-      metadata: { changed_fields: fields },
+      metadata: {
+        changed_fields: fields,
+        ...(channelChanged
+          ? {
+              active_channel_old: before.active_channel ?? null,
+              active_channel_new: updatedCase.active_channel ?? null,
+            }
+          : {}),
+      },
     });
 
     return NextResponse.json({ ok: true, case: updatedCase });

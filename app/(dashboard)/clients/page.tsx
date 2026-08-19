@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Users, Search, Pencil, Check, X, UserPlus } from 'lucide-react';
+import { Users, Search, Pencil, Check, X, UserPlus, Send } from 'lucide-react';
 import { formatPhoneInput } from '@/lib/utils';
 import { Pagination } from '@/components/pagination';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,6 +10,22 @@ import { useActiveTenant } from '@/hooks/use-active-tenant';
 import { Client } from '@/lib/types';
 import { fetcher, fetchWithAuth } from "@/lib/api";
 import { ClientFormModal, ClientDeleteButton } from '@/components/clients/client-actions';
+import { TelegramLinkModal } from '@/components/clients/telegram-link-modal';
+
+function ChannelBadge({ channel }: { channel: string }) {
+  const isTelegram = channel === 'telegram';
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        isTelegram
+          ? 'border-sky-200 bg-sky-50 text-sky-700'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      }`}
+    >
+      {isTelegram ? 'Telegram' : 'WhatsApp'}
+    </span>
+  );
+}
 
 export default function ClientsPage() {
   const { user } = useAuth();
@@ -25,6 +41,7 @@ export default function ClientsPage() {
   const [editData, setEditData] = useState({ name: '', email: '', phone: '' });
   const [saving, setSaving] = useState(false);
   const [showNewClient, setShowNewClient] = useState(false);
+  const [linkingClient, setLinkingClient] = useState<Client | null>(null);
 
   const handleEditClick = (client: Client) => {
     setEditingId(client.id);
@@ -193,12 +210,32 @@ const handleSaveEdit = async (id: string) => {
                         </>
                       ) : (
                         <>
-                          <td className="px-6 py-4 font-medium text-gray-900 max-w-[240px] truncate" title={client.name || undefined}>{client.name}</td>
+                          <td className="px-6 py-4 font-medium text-gray-900 max-w-[240px]" title={client.name || undefined}>
+                            <span className="block truncate">{client.name}</span>
+                            {(client.client_channels?.length ?? 0) > 0 && (
+                              <span className="mt-1 flex flex-wrap gap-1" data-testid={`client-channels-${client.id}`}>
+                                {client.client_channels!.map((ch) => (
+                                  <ChannelBadge key={ch.id} channel={ch.channel} />
+                                ))}
+                              </span>
+                            )}
+                          </td>
                           <td className="px-6 py-4 font-mono text-xs max-w-[200px] truncate" title={client.document || undefined}>{client.document}</td>
                           <td className="px-6 py-4 max-w-[240px] truncate" title={client.email || undefined}>{client.email || '-'}</td>
                           <td className="px-6 py-4">{client.phone ? formatPhoneInput(client.phone) : '-'}</td>
 <td className="px-6 py-4 text-right">
                             <div className="flex justify-end gap-1">
+                              {isAdmin && (
+                                <button
+                                  onClick={() => setLinkingClient(client)}
+                                  className="p-1.5 text-gray-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors"
+                                  title="Vincular Telegram"
+                                  aria-label={`Vincular Telegram ao cliente ${client.name || client.id}`}
+                                  data-testid={`link-telegram-${client.id}`}
+                                >
+                                  <Send className="w-4 h-4" />
+                                </button>
+                              )}
                               {isAdmin && (
                                 <button 
                                   onClick={() => handleEditClick(client)}
@@ -237,6 +274,17 @@ const handleSaveEdit = async (id: string) => {
           onSaved={() => {
             setShowNewClient(false);
             setPage(1);
+            mutate();
+          }}
+        />
+      )}
+
+      {linkingClient && (
+        <TelegramLinkModal
+          client={linkingClient}
+          tenantQuery={tenantQuery}
+          onClose={() => {
+            setLinkingClient(null);
             mutate();
           }}
         />

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { sendMessage } from '@/lib/messaging';
+import { sendCaseMessage } from '@/lib/channels/message-service';
 import { recordAuditAction } from '@/lib/audit';
 import { logger } from '@/lib/logger';
 import { getActiveQuarantine } from '@/lib/quarantine';
@@ -8,8 +8,6 @@ import { getActiveQuarantine } from '@/lib/quarantine';
 type FollowUpCase = {
   id: string;
   name?: string | null;
-  phone?: string | null;
-  telegram_chat_id?: string | null;
   user_id?: string | null;
   tenant_id: string;
 };
@@ -87,20 +85,27 @@ export async function GET(req: NextRequest) {
             const followUpText = `Olá, ${firstName}! Tudo bem? Estou passando para lembrar da nossa proposta. Podemos continuar a negociação? Qualquer dúvida estou à disposição.`;
 
             if (lastMessage.content !== followUpText) {
-              if (c.phone || c.telegram_chat_id) {
-                const destination = c.telegram_chat_id || c.phone;
-                if (!destination) continue;
-                await sendMessage(destination, followUpText, c.user_id ?? undefined).catch(err => {
-                  logger.error('Erro ao enviar follow-up', { tenantId: c.tenant_id, caseId: c.id }, { error: err instanceof Error ? err.message : String(err) });
+              const sendResult = await sendCaseMessage({
+                caseId: c.id,
+                content: followUpText,
+                database: supabase,
+                tenantId: c.tenant_id,
+                senderRole: 'ai',
+              }).catch(err => {
+                logger.error('Erro ao enviar follow-up', { tenantId: c.tenant_id, caseId: c.id }, { error: err instanceof Error ? err.message : String(err) });
+                return null;
+              });
+
+              // Sem destino de canal (ou falha de envio inesperada): mantém o
+              // registro no histórico, como no fluxo legado.
+              if (!sendResult || sendResult.status === 'skipped') {
+                await supabase.from('messages').insert({
+                  tenant_id: c.tenant_id,
+                  case_id: c.id,
+                  role: 'ai',
+                  content: followUpText
                 });
               }
-
-              await supabase.from('messages').insert({
-                tenant_id: c.tenant_id,
-                case_id: c.id,
-                role: 'ai',
-                content: followUpText
-              });
 
               await recordAuditAction(supabase, {
                 tenantId: c.tenant_id,

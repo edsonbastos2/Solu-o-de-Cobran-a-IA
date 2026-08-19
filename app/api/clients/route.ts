@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
     const query = supabase
       .from('clients')
-      .select('*', { count: 'exact' })
+      .select('*, client_channels (id, channel, username, verified_at)', { count: 'exact' })
       .eq('tenant_id', tenantId);
 
     const { data, error, count } = await query

@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { resolveAIConfig } from '@/lib/ai-config';
-import { sendMessage } from '@/lib/messaging';
+import { sendCaseMessage } from '@/lib/channels/message-service';
 import { requireTenantContext, serverError } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
 import { getActiveQuarantine } from '@/lib/quarantine';
@@ -175,14 +175,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Erro na API do ${aiProvider}: ${message}` }, { status: 500 });
     }
 
-    const { error: messageError } = await ctx.supabase.from('messages').insert({
-      tenant_id: ctx.tenantId,
-      case_id: caseId,
-      role: 'ai',
-      content: aiText
-    });
-    if (messageError) throw messageError;
-
     await recordAuditAction(ctx.supabase, {
       tenantId: ctx.tenantId,
       entityType: 'message',
@@ -193,12 +185,46 @@ export async function POST(req: NextRequest) {
       metadata: { source: 'start-negotiation', content_length: aiText.length },
     });
 
-    if (caseData.phone || caseData.telegram_chat_id) {
-      const destination = caseData.telegram_chat_id || caseData.phone;
-      sendMessage(destination, aiText, caseData.user_id).catch(err => {
-        console.error("Error in background message send:", err);
-      });
+    // Texto limpo (sem marcadores [HANDOFF]/[ACORDO_FECHADO]) tanto para o
+    // canal quanto para a persistência — mesmo tratamento do pipeline em
+    // lib/agent.ts.
+    const cleanAiText = aiText
+      .replace(/\[HANDOFF\]/g, '')
+      .replace(/\[ACORDO_FECHADO\]/g, '')
+      .trim();
+
+    // Persistência síncrona da primeira mensagem: a row de messages
+    // (send_status 'pending') é gravada ANTES de responder, e apenas o envio
+    // externo (sendCaseMessage) roda em background atualizando essa mesma row
+    // com o resultado via persistMessageId — exatamente uma row por mensagem.
+    // Sem destino de canal, a row permanece como histórico (send_status null).
+    const { data: pendingMessage, error: pendingMessageError } = await ctx.supabase
+      .from('messages')
+      .insert({
+        tenant_id: ctx.tenantId,
+        case_id: caseId,
+        role: 'ai',
+        content: cleanAiText,
+        send_status: 'pending',
+      })
+      .select('id')
+      .single();
+    if (pendingMessageError) {
+      // Sem a row âncora, o envio em background mantém o comportamento legado
+      // (INSERT no message-service ao concluir o envio).
+      console.error("Erro ao persistir mensagem inicial de forma síncrona:", pendingMessageError);
     }
+
+    sendCaseMessage({
+      caseId,
+      content: cleanAiText,
+      database: ctx.supabase,
+      tenantId: ctx.tenantId,
+      senderRole: 'ai',
+      persistMessageId: pendingMessage?.id,
+    }).catch(err => {
+      console.error("Error in background message send:", err);
+    });
 
     const { data: updatedCase, error: statusError } = await ctx.supabase
       .from('cases')
@@ -220,7 +246,7 @@ export async function POST(req: NextRequest) {
       metadata: { source: 'start-negotiation' },
     });
 
-    return NextResponse.json({ text: aiText, newStatus: 'in_negotiation' });
+    return NextResponse.json({ text: cleanAiText, newStatus: 'in_negotiation' });
 
   } catch (error: unknown) {
     return serverError('start-negotiation error', error);

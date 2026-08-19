@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, serverError } from '@/lib/api-auth';
 import { validateFields } from '@/lib/api-validate';
 import { recordAuditAction } from '@/lib/audit';
+import { buildClientCaseFilter } from '@/lib/channels/message-service';
 
 export async function PUT(
   req: NextRequest,
@@ -94,10 +95,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Não é possível excluir cliente com contratos ativos vinculados.' }, { status: 409 });
     }
 
+    // cases não possui coluna client_id: casos do cliente são casados por
+    // debtor_id direto ou pelos títulos financeiros do cliente.
+    let caseFilter: string;
+    try {
+      caseFilter = await buildClientCaseFilter(supabase, tenantId, id);
+    } catch (error) {
+      return serverError('clients DELETE cases filter error', error);
+    }
     const { data: activeCases, error: casesError } = await supabase
       .from('cases')
       .select('id')
-      .eq('client_id', id)
+      .or(caseFilter)
       .eq('tenant_id', tenantId)
       .limit(1);
     if (casesError) return serverError('clients DELETE cases check error', casesError);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, serverError } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
+import { resolveCaseClientId } from '@/lib/channels/message-service';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
 
     const { data: linkedCase, error: caseError } = await supabase
       .from('cases')
-      .select('id, tenant_id, financial_title_id, client_id, contract_id, name')
+      .select('id, tenant_id, financial_title_id, debtor_id, contract_id, name')
       .eq('id', caseId)
       .eq('tenant_id', tenantId)
       .maybeSingle();
@@ -111,6 +112,9 @@ export async function POST(req: NextRequest) {
     if (!linkedCase) {
       return NextResponse.json({ error: 'Caso não encontrado ou não pertence ao tenant.' }, { status: 404 });
     }
+
+    // cases não possui coluna client_id: resolve por debtor_id ou título.
+    const clientId = await resolveCaseClientId(supabase, tenantId, linkedCase);
 
     // Evita duplicar processo para o mesmo caso (apenas um aberto).
     const { data: existingOpen } = await supabase
@@ -149,7 +153,7 @@ export async function POST(req: NextRequest) {
       .insert({
         tenant_id: tenantId,
         case_id: caseId,
-        client_id: linkedCase.client_id,
+        client_id: clientId,
         contract_id: linkedCase.contract_id,
         financial_title_id: linkedCase.financial_title_id,
         process_type,

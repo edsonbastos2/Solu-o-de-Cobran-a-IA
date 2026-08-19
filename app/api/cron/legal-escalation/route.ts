@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getCollectionStage } from '@/lib/finance';
 import { recordAuditAction } from '@/lib/audit';
+import { resolveCaseClientId } from '@/lib/channels/message-service';
 import { logger } from '@/lib/logger';
 
 export const runtime = 'nodejs';
@@ -17,7 +18,7 @@ type EscalableCase = {
   created_at: string;
   max_discount_margin: number | null;
   financial_title_id: string | null;
-  client_id: string | null;
+  debtor_id: string | null;
   financial_titles?: Array<{ id: string; due_date: string; current_value: number | null; original_value: number | null; contract_id: string | null }> | null;
 };
 
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
     const { data: cases, error: casesError } = await supabase
       .from('cases')
       .select(`
-        id, tenant_id, status, created_at, max_discount_margin, financial_title_id, client_id,
+        id, tenant_id, status, created_at, max_discount_margin, financial_title_id, debtor_id,
         financial_titles ( id, due_date, current_value, original_value, contract_id )
       `)
       .not('status', 'in', '("closed","settled","recovered","cancelled")');
@@ -81,7 +82,10 @@ export async function GET(req: NextRequest) {
 
       const title = c.financial_titles?.[0];
       if (!title?.due_date) continue;
-      if (!c.client_id) continue;
+
+      // cases não possui coluna client_id: resolve por debtor_id ou título.
+      const clientId = await resolveCaseClientId(supabase, c.tenant_id, c);
+      if (!clientId) continue;
 
       const stage = getCollectionStage(title.due_date, Number(c.max_discount_margin) || 10, c.status);
 
@@ -101,7 +105,7 @@ export async function GET(req: NextRequest) {
         .insert({
           tenant_id: c.tenant_id,
           case_id: c.id,
-          client_id: c.client_id,
+          client_id: clientId,
           contract_id: title.contract_id,
           financial_title_id: title.id,
           process_type: 'cobranca',

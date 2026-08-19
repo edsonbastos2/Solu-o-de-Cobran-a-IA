@@ -35,7 +35,7 @@ No test suite, no formatter, no CI/CD configured.
 | `app/agents/`, `app/policies/`, `app/settings/` | Configuration pages |
 | `components/` | Shared React components (5 files) |
 | `hooks/` | `useAuth.ts` (session + profile) and `use-mobile.ts` |
-| `lib/` | All business logic — Supabase clients, AI agents, WhatsApp, tenant, types, utilities |
+| `lib/` | All business logic — Supabase clients, AI agents, canais de comunicação (`lib/channels/`), tenant, types, utilities |
 
 ### Supabase client patterns (three tiers)
 
@@ -62,9 +62,9 @@ The `processChat(caseId, message)` function implements a multi-agent workflow:
 
 Falls back to single-agent mode if no supervisor is configured. AI provider/model/keys are read per-user from the `profiles` table (supports Gemini, OpenAI, Anthropic, OpenRouter, Ollama). Keys may be encrypted — always try the `get_user_ai_keys` RPC first.
 
-### WhatsApp integration (`lib/whatsapp.ts`)
+### Canais de comunicação (`lib/channels/`)
 
-Sends messages via Z-API. Credentials can be global (env vars) or per-user (profiles table). Phone numbers are auto-prefixed with `55` if missing.
+O domínio envia mensagens exclusivamente via `sendCaseMessage`/`sendClientMessage` de `lib/channels/message-service.ts` — nunca chame os adapters (WhatsApp/Telegram) diretamente. Novos canais implementam a interface `CommunicationChannel` (`lib/channels/types.ts`) e se registram em `lib/channels/registry.ts`. Segredos de canal (bot token do Telegram, credenciais Z-API, webhook secret) vivem em `channel_configs` por tenant, cifrados via `ai_encrypt` — as env vars (`TELEGRAM_BOT_TOKEN`, `ZAPI_*`) são apenas fallback de demo/desenvolvimento. Em produção, a configuração é feita por tenant na aba Canais (`components/channel-config-panel.tsx`).
 
 ### Collection stages (`lib/finance.ts`)
 

@@ -489,8 +489,10 @@ const InsightsPanel = memo(function InsightsPanel({ caseId, tenantPath, canFetch
 export default function CaseDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const unwrappedParams = use(params);
   const caseId = unwrappedParams.id;
-  const { user, authLoading, tenantId, tenantPath, needsTenantSelection } = useActiveTenant();
+  const { user, authLoading, tenantId, tenantPath, needsTenantSelection, isAdmin, role } = useActiveTenant();
   const canFetch = !authLoading && Boolean(user) && !needsTenantSelection;
+  // Troca de canal ativo exige role gestor (o PATCH da API já exige) — visualizadores não veem o seletor.
+  const canManageCase = isAdmin || role === 'gestor';
 
   const caseUrl = caseId ? `/api/cases/${caseId}${tenantPath}` : null;
   const { data, error, isLoading: loading, mutate } = useSWR<CaseDetailsResponse>(canFetch ? caseUrl : null, fetcher, {
@@ -549,6 +551,7 @@ const caseData: Case | null = data?.case || null;
   const [isSending, setIsSending] = useState(false);
   const [isStartingIA, setIsStartingIA] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isUpdatingChannel, setIsUpdatingChannel] = useState(false);
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
@@ -675,10 +678,12 @@ const caseData: Case | null = data?.case || null;
   const handleUpdateStatus = async (newStatus: string) => {
     setIsUpdatingStatus(true);
     try {
-      const res = await fetchWithAuth(`/api/cases/${caseId}`, {
+      // Tenant via query string (mesmo padrão do GET da página): o PATCH da
+      // API lê tenant_id de searchParams e rejeita campos fora da whitelist.
+      const res = await fetchWithAuth(`/api/cases/${caseId}${tenantPath}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, tenant_id: tenantId || undefined })
+        body: JSON.stringify({ status: newStatus })
       });
       if (!res.ok) {
         const resData = await res.json();
@@ -690,6 +695,30 @@ const caseData: Case | null = data?.case || null;
       alert('Erro: ' + (err instanceof Error ? err.message : 'erro desconhecido'));
     } finally {
       setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleUpdateActiveChannel = async (channel: 'whatsapp' | 'telegram' | null) => {
+    if (!caseId) return;
+    setIsUpdatingChannel(true);
+    try {
+      // Tenant via query string (mesmo padrão do GET da página): o PATCH da
+      // API lê tenant_id de searchParams e rejeita campos fora da whitelist.
+      const res = await fetchWithAuth(`/api/cases/${caseId}${tenantPath}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active_channel: channel })
+      });
+      if (!res.ok) {
+        const resData = await res.json().catch(() => ({}));
+        alert(resData.error || 'Erro ao atualizar o canal ativo');
+      } else {
+        mutate();
+      }
+    } catch (err: unknown) {
+      alert('Erro: ' + (err instanceof Error ? err.message : 'erro desconhecido'));
+    } finally {
+      setIsUpdatingChannel(false);
     }
   };
 
@@ -802,6 +831,15 @@ const caseData: Case | null = data?.case || null;
   const updatedVal = Number(caseData.updated_value) || originalVal;
   const formattedOriginal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(originalVal);
   const formattedUpdated = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(updatedVal);
+
+  const clientChannels = client?.client_channels ?? [];
+  const telegramBinding = clientChannels.find((c) => c.channel === 'telegram');
+  const activeChannelLabel =
+    caseData.active_channel === 'telegram'
+      ? `Telegram${telegramBinding?.username ? ` (@${telegramBinding.username})` : ''}`
+      : caseData.active_channel === 'whatsapp'
+        ? `WhatsApp (${formatPhoneInput(caseData.phone)})`
+        : `Automático (${formatPhoneInput(caseData.phone)})`;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -985,15 +1023,42 @@ const caseData: Case | null = data?.case || null;
                 <div className="w-3 h-3 bg-emerald-500 rounded-full animate-ping" />
                 <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
-                    WhatsApp Feed - Sincronizado ao vivo
+                    Conversa - Sincronizado ao vivo
                   </span>
-                  <span className="text-xs text-emerald-400 font-medium">
-                    {formatPhoneInput(caseData.phone)}
+                  <span className="text-xs text-emerald-400 font-medium" data-testid="active-channel-label">
+                    Canal ativo: {activeChannelLabel}
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
+                {canManageCase && clientChannels.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400">Canal Ativo:</span>
+                    <label htmlFor="case-active-channel" className="sr-only">Canal ativo do caso</label>
+                    <select
+                      id="case-active-channel"
+                      value={caseData.active_channel ?? ''}
+                      disabled={isUpdatingChannel}
+                      onChange={(e) =>
+                        handleUpdateActiveChannel(
+                          (e.target.value || null) as 'whatsapp' | 'telegram' | null
+                        )
+                      }
+                      data-testid="active-channel-select"
+                      className="bg-slate-800 border border-slate-700 text-white text-xs font-semibold rounded-lg px-2 py-1 focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
+                    >
+                      <option value="">Automático (telefone do caso)</option>
+                      {clientChannels.map((c) => (
+                        <option key={c.id} value={c.channel}>
+                          {c.channel === 'telegram'
+                            ? `Telegram${c.username ? ` (@${c.username})` : ''}`
+                            : 'WhatsApp'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <span className="text-[11px] text-slate-400">Status do Caso:</span>
                 <label htmlFor="case-status" className="sr-only">Status do caso</label>
                 <select
@@ -1072,6 +1137,18 @@ const caseData: Case | null = data?.case || null;
                             <span className="text-blue-700 font-bold">Atendente Humano</span>
                           </>
                         )}
+                        {m.channel && (
+                          <span
+                            data-testid={`message-channel-${m.channel}`}
+                            className={`rounded px-1.5 py-0.5 normal-case tracking-normal ${
+                              m.channel === 'telegram'
+                                ? 'bg-sky-100 text-sky-700'
+                                : 'bg-emerald-100 text-emerald-700'
+                            }`}
+                          >
+                            {m.channel === 'telegram' ? 'Telegram' : 'WhatsApp'}
+                          </span>
+                        )}
                         <span>•</span>
                         <span>{new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
@@ -1087,6 +1164,17 @@ const caseData: Case | null = data?.case || null;
                       >
                         <p className="whitespace-pre-wrap">{m.content}</p>
                       </div>
+
+                      {m.send_status === 'failed' && (
+                        <div
+                          role="alert"
+                          data-testid="message-send-failed"
+                          className="mt-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold text-red-600"
+                        >
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                          <span>Falha no envio{m.status_error ? `: ${m.status_error}` : ''}</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendMessage } from '@/lib/messaging';
+import { sendCaseMessage } from '@/lib/channels/message-service';
 import { requireTenantContext, serverError } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
 
@@ -29,13 +29,24 @@ export async function POST(req: NextRequest) {
     if (caseError) return serverError('agent message case lookup error', caseError);
     if (!caseData) return NextResponse.json({ error: 'Caso não encontrado.' }, { status: 404 });
 
-    const { error: insertError } = await ctx.supabase.from('messages').insert({
-      tenant_id: ctx.tenantId,
-      case_id: caseId,
-      role: 'human',
+    // Envio pelo canal ativo (message-service): persiste a mensagem com
+    // channel/send_status. Sem destino de canal, grava no histórico sem canal.
+    const sendResult = await sendCaseMessage({
+      caseId,
       content: message,
+      database: ctx.supabase,
+      tenantId: ctx.tenantId,
+      senderRole: 'human',
     });
-    if (insertError) return serverError('agent message insert error', insertError);
+    if (sendResult.status === 'skipped') {
+      const { error: insertError } = await ctx.supabase.from('messages').insert({
+        tenant_id: ctx.tenantId,
+        case_id: caseId,
+        role: 'human',
+        content: message,
+      });
+      if (insertError) return serverError('agent message insert error', insertError);
+    }
 
     await recordAuditAction(ctx.supabase, {
       tenantId: ctx.tenantId,
@@ -46,11 +57,6 @@ export async function POST(req: NextRequest) {
       action: 'HUMAN_MESSAGE_SENT',
       metadata: { role: 'human', content_length: message.length },
     });
-
-    if (caseData.phone || caseData.telegram_chat_id) {
-      const destination = caseData.telegram_chat_id || caseData.phone;
-      await sendMessage(destination, message, caseData.user_id);
-    }
 
     if (caseData.status === 'in_negotiation' || caseData.status === 'not_started') {
       const { data: updatedCase, error: statusError } = await ctx.supabase

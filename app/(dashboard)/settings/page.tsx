@@ -8,10 +8,11 @@ import { CheckCircle2 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
 import { TenantAiConfigPanel } from '@/components/tenant-ai-config-panel';
 import { TeamManagementPanel } from '@/components/team-management-panel';
+import { ChannelConfigPanel } from '@/components/channel-config-panel';
 
 export default function SettingsPage() {
   const { user, role } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'ai' | 'tenant' | 'team'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'ai' | 'tenant' | 'team' | 'channels'>('profile');
   const canManageTeam = role === 'owner' || role === 'admin';
 
   const [name, setName] = useState('');
@@ -177,6 +178,16 @@ export default function SettingsPage() {
                 Equipe
               </button>
             )}
+            {canManageTeam && (
+              <button
+                onClick={() => setActiveTab('channels')}
+                data-testid="settings-tab-channels"
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg font-medium text-sm transition-colors text-left ${activeTab === 'channels' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:bg-white/5 hover:text-slate-300 border border-transparent'}`}
+              >
+                <Send className="w-4 h-4 shrink-0" />
+                Canais
+              </button>
+            )}
             <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-400 hover:bg-white/5 hover:text-slate-300 font-medium text-sm transition-colors text-left border border-transparent">
               <Bell className="w-4 h-4 shrink-0" />
               Notificações
@@ -193,6 +204,8 @@ export default function SettingsPage() {
             )}
             {activeTab === 'team' && canManageTeam ? (
               <TeamManagementPanel />
+            ) : activeTab === 'channels' && canManageTeam ? (
+              <ChannelConfigPanel />
             ) : activeTab === 'tenant' ? (
               <TenantAiConfigPanel />
             ) : (

@@ -28,6 +28,15 @@ export interface Client {
   address?: string;
   phone?: string;
   email?: string;
+  /** Canais vinculados do cliente — sem external_id (nunca exposto ao frontend). */
+  client_channels?: ClientChannel[];
+}
+
+export interface ClientChannel {
+  id: string;
+  channel: 'whatsapp' | 'telegram' | string;
+  username?: string | null;
+  verified_at?: string | null;
 }
 
 export interface CollectionPolicy {
@@ -112,6 +121,7 @@ export interface Case {
   debtor_document?: string;
   debtor_address?: string;
   telegram_chat_id?: string;
+  active_channel?: 'whatsapp' | 'telegram' | null;
   propensity_score?: number | null;
   propensity_updated_at?: string | null;
 }
@@ -123,6 +133,12 @@ export interface Message {
   case_id: string;
   role: 'user' | 'ai' | 'human' | 'system';
   content: string;
+  /** Canal pelo qual a mensagem foi enviada/recebida (whatsapp | telegram). */
+  channel?: 'whatsapp' | 'telegram' | string | null;
+  /** Resultado do envio: sent | failed | received. */
+  send_status?: string | null;
+  /** Detalhe do erro quando send_status='failed'. */
+  status_error?: string | null;
 }
 
 export interface AuditLog {

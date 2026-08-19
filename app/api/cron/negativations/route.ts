@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getDaysOverdue } from '@/lib/finance';
-import { sendMessage } from '@/lib/messaging';
+import { sendClientMessage } from '@/lib/channels/message-service';
 import { mockRequestNegativation, getNegativationProvider } from '@/lib/negativation-provider';
 import { recordAuditAction } from '@/lib/audit';
 import { logger } from '@/lib/logger';
@@ -32,8 +32,6 @@ type EligibleTitle = {
     collection_policies?: Array<{ days_to_negative: number | null }> | null;
   }> | null;
 };
-
-type ParentTenant = { id: string; owner_user_id: string | null };
 
 function businessDaysDifference(fromIso: string): number {
   const from = new Date(fromIso);
@@ -147,39 +145,21 @@ export async function GET(req: NextRequest) {
       .in('status', ['pending_notification', 'notified', 'requested']);
     if (queueError) throw queueError;
 
-    // Parent tenants para campanhas/mensageria (owner_user_id define provider)
-    const tenantIds = Array.from(new Set((queue || []).map((n) => n.tenant_id)));
-    const { data: tenants } = await supabase
-      .from('tenants')
-      .select('id, owner_user_id')
-      .in('id', tenantIds);
-    const ownerByTenant = new Map<string, string | null>((tenants || []).map((t: ParentTenant) => [t.id, t.owner_user_id]));
-
     for (const neg of queue || []) {
-      const ownerUserId = ownerByTenant.get(neg.tenant_id) || undefined;
-
       if (neg.status === 'pending_notification' && !neg.notified_at) {
         // Envia a notificação prévia (CDC Art. 43) e marca notified.
         const { data: titleInfo } = await supabase
           .from('financial_titles')
-          .select('client_id, due_date, current_value, original_value')
+          .select('client_id')
           .eq('id', neg.financial_title_id)
           .maybeSingle();
-        let phone: string | null = null;
         if (titleInfo?.client_id) {
-          const { data: client } = await supabase
-            .from('clients')
-            .select('phone, name')
-            .eq('id', titleInfo.client_id)
-            .maybeSingle();
-          phone = client?.phone || null;
-        }
-        if (phone) {
-          await sendMessage(
-            phone,
-            `Informamos que, na ausência de pagamento, seu nome poderá ser negativado nos órgãos de proteção ao crédito (Serasa/SPC/Boa Vista) em 5 dias, conforme o CDC.`,
-            ownerUserId
-          ).catch((e) => logger.warn('[cron/negativations] notification send failed', undefined, { error: String(e) }));
+          await sendClientMessage({
+            clientId: titleInfo.client_id,
+            content: `Informamos que, na ausência de pagamento, seu nome poderá ser negativado nos órgãos de proteção ao crédito (Serasa/SPC/Boa Vista) em 5 dias, conforme o CDC.`,
+            database: supabase,
+            tenantId: neg.tenant_id,
+          }).catch((e) => logger.warn('[cron/negativations] notification send failed', undefined, { error: String(e) }));
         }
         const { error: notifiedError } = await supabase
           .from('negativations')
