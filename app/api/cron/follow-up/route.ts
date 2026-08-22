@@ -4,12 +4,15 @@ import { sendCaseMessage } from '@/lib/channels/message-service';
 import { recordAuditAction } from '@/lib/audit';
 import { logger } from '@/lib/logger';
 import { getActiveQuarantine } from '@/lib/quarantine';
+import { isAIPaused } from '@/lib/conversation-service';
 
 type FollowUpCase = {
   id: string;
   name?: string | null;
   user_id?: string | null;
   tenant_id: string;
+  controller?: 'ai' | 'human' | null;
+  status: string;
 };
 
 type MessageRow = {
@@ -71,6 +74,13 @@ export async function GET(req: NextRequest) {
           const hoursSinceLastMessage = (currentTime - messageTime) / (1000 * 60 * 60);
 
           if (hoursSinceLastMessage >= 24) {
+            // IA pausada (humano conduz): follow-up automático não é enviado —
+            // o operador responsável detém o controle da conversa (ADR-003).
+            if (isAIPaused(c)) {
+              logger.info('[cron/follow-up] IA pausada, skip', { tenantId: c.tenant_id, caseId: c.id }, { controller: c.controller ?? null });
+              continue;
+            }
+
             // GUARD DE QUARENTENA (tarefa 11): casos sob quarentena ativa
             // (approved/permanent_block, nao expirada) NAO recebem follow-up
             // automatizado. Mantem conformidade com pedido de nao contato

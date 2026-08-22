@@ -1,4 +1,4 @@
-import { Bot, Cpu, FolderKanban, Handshake, LayoutDashboard, Settings, Shield, Users, ShieldAlert, MessageSquareText, FileUp, Ban, Landmark, Scale, Sparkles } from 'lucide-react';
+import { Bot, Cpu, FolderKanban, Handshake, LayoutDashboard, MessageCircle, Settings, Shield, Users, ShieldAlert, MessageSquareText, FileUp, Ban, Landmark, Scale, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export type NavItem = {
@@ -24,6 +24,7 @@ export const navConfig: NavSection[] = [
     items: [
       { label: 'Dashboard', href: '/', icon: LayoutDashboard, section: 'operacao' },
       { label: 'Casos (Ao Vivo)', href: '/cases', icon: FolderKanban, section: 'operacao' },
+      { label: 'Conversas', href: '/conversations', icon: MessageCircle, section: 'operacao' },
       { label: 'Acordos', href: '/negotiations', icon: Handshake, section: 'operacao' },
       { label: 'Contratos', href: '/contracts', icon: Bot, section: 'operacao' },
       { label: 'Clientes', href: '/clients', icon: Users, section: 'operacao' },

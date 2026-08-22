@@ -11,6 +11,7 @@ import { CaseWithRelations } from '@/lib/types';
 import { logger } from '@/lib/logger';
 import { getActiveQuarantine } from '@/lib/quarantine';
 import { resolveTemplateVariables } from '@/lib/message-templates';
+import { recordAIHandoff } from '@/lib/conversation-service';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
@@ -625,6 +626,13 @@ Retorne um JSON: { "approved": boolean, "complianceScore": number, "feedback": "
       after: updatedCase,
       metadata: { source: 'ai_pipeline' },
     });
+  }
+
+  // Condutor explícito (Central de Conversas): HANDOFF/estágio especializada
+  // pausa a IA mesmo quando `controller` já foi setado explicitamente para
+  // 'ai' (a derivação legada por status sozinha não cobriria esse caso).
+  if (newStatus === 'needs_attention' && caseData.status !== 'needs_attention') {
+    await recordAIHandoff(database, resolvedTenantId, caseId);
   }
 
   return { text: aiText, newStatus, stage };

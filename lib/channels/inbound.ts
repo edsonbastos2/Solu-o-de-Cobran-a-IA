@@ -3,6 +3,7 @@ import { processChat } from '../agent';
 import { recordAuditAction } from '../audit';
 import { logger } from '../logger';
 import { rateLimit } from '../rate-limit';
+import { isAIPaused } from '../conversation-service';
 import { buildClientCaseFilter } from './message-service';
 import type { InboundEvent } from './types';
 
@@ -16,6 +17,7 @@ const ELIGIBLE_CASE_STATUSES = ['not_started', 'in_negotiation', 'needs_attentio
 interface EligibleCaseRow {
   id: string;
   status: string;
+  controller: import('@/lib/types').ConversationController | null;
   user_id: string | null;
 }
 
@@ -57,7 +59,7 @@ async function resolveClientByChannel(
 function eligibleCaseQuery(database: SupabaseClient, event: InboundEvent) {
   return database
     .from('cases')
-    .select('id, status, user_id')
+    .select('id, status, controller, user_id')
     .eq('tenant_id', event.tenantId)
     .in('status', ELIGIBLE_CASE_STATUSES)
     .order('created_at', { ascending: false })
@@ -164,8 +166,25 @@ export async function processInboundEvent(
     throw messageError;
   }
 
-  // Caso em intervenção humana: apenas registra + auditoria, sem IA.
-  if (caseRow.status === 'needs_attention') {
+  // Evento de conversa: mensagem do devedor recebida (timeline/auditoria).
+  const { error: eventInsertError } = await database.from('conversation_events').insert({
+    tenant_id: event.tenantId,
+    case_id: caseRow.id,
+    type: 'MESSAGE_RECEIVED',
+    performed_by: null,
+    payload: { channel: event.channel, content_length: event.content.length },
+  });
+  if (eventInsertError) {
+    logger.warn(
+      'Falha ao registrar evento de mensagem recebida',
+      { tenantId: event.tenantId },
+      { error: eventInsertError.message, caseId: caseRow.id }
+    );
+  }
+
+  // IA pausada (humano conduz, ou legado needs_attention): apenas registra
+  // mensagem + evento + auditoria, sem disparar o pipeline de IA.
+  if (isAIPaused(caseRow)) {
     await recordAuditAction(database, {
       tenantId: event.tenantId,
       entityType: 'message',
@@ -173,9 +192,9 @@ export async function processInboundEvent(
       caseId: caseRow.id,
       actorUserId: caseRow.user_id || null,
       action: 'EXTERNAL_MESSAGE_RECEIVED',
-      metadata: { channel: event.channel, content_length: event.content.length },
+      metadata: { channel: event.channel, content_length: event.content.length, ai_paused: true },
     });
-    return { ok: true, reason: 'needs_attention' };
+    return { ok: true, reason: 'ai_paused' };
   }
 
   // Rate limit 5/60s por chat — excedido responde ok ao provedor (sem 429).

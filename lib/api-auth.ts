@@ -11,6 +11,9 @@ export interface AuthContext {
 /** Papéis fixos de equipe do tenant, do maior para o menor rank. */
 export type TenantRole = 'owner' | 'admin' | 'gestor' | 'operador';
 
+/** Rank hierárquico dos papéis (owner > admin > gestor > operador). */
+export const ROLE_RANK: Record<TenantRole, number> = { owner: 4, admin: 3, gestor: 2, operador: 1 };
+
 export interface TenantContext extends AuthContext {
   tenantId: string;
   role: TenantRole;
@@ -139,8 +142,6 @@ export async function requireTenantContext(
   }
   return { ctx: { ...authContext, tenantId, role, canConfigureAI, supabase } };
 }
-
-const ROLE_RANK: Record<TenantRole, number> = { owner: 4, admin: 3, gestor: 2, operador: 1 };
 
 /**
  * Exige um papel mínimo (owner > admin > gestor > operador) no tenant ativo.

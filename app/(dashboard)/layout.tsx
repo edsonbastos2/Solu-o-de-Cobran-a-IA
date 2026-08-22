@@ -8,9 +8,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      {/* O shell ocupa exatamente a altura da viewport: a janela nunca rola, o
+          scroll fica no container de conteúdo. Assim as páginas podem usar
+          h-full para preencher a tela sem depender da altura do Header. */}
+      <SidebarInset className="h-svh overflow-hidden">
         <Header />
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </SidebarInset>
     </SidebarProvider>
   );

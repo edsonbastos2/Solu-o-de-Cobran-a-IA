@@ -1,559 +1,1873 @@
-## Princípios da modelagem
-O MVP deve seguir estas regras:
+# Implementação de Módulo de Chat para Sistema de Cobrança com IA
+
+## Contexto
 
-1 - Todo dado pertence a uma empresa (Tenant).
-2 - Um cliente pode possuir vários contratos.
-3 - Um contrato pode possuir vários títulos financeiros.
-4 - Apenas títulos vencidos podem gerar Casos de Cobrança.
-5 - Toda cobrança acontece sobre um Caso de Cobrança.
-6 - IA, humano e automações sempre trabalham sobre o Caso.
-7 - Toda ação gera auditoria.
+Estou desenvolvendo um sistema de cobrança inteligente no qual diferentes agentes de IA são responsáveis por executar etapas do processo de cobrança.
 
-# Modelo de Domínio:
+Preciso implementar um novo módulo de **chat/conversação entre o agente de IA responsável pela cobrança e o devedor**, permitindo que:
 
-Tenant
-│
-├── Usuários
-│
-├── Clientes
-│
-├── Contratos
-│      │
-│      ├── Cláusulas
-│      ├── Documentos
-│      ├── Responsáveis
-│      └── Títulos Financeiros
-│               │
-│               ▼
-│        Casos de Cobrança
-│               │
-│               ├── Conversas
-│               │      └── Mensagens
-│               │
-│               ├── Negociações
-│               │
-│               ├── Promessas de Pagamento
-│               │
-│               ├── Eventos
-│               │
-│               ├── Quarentena
-│               │
-│               ├── Negativação
-│               │
-│               ├── Protesto
-│               │
-│               └── Encerramento
-│
-├── Workflows
-│
-├── Políticas de Cobrança
-│
-├── Agentes IA
-│
-└── Auditoria
+1. O agente de IA inicie e conduza a conversa com o devedor.
+2. O devedor possa responder às mensagens.
+3. A IA possa enviar novas mensagens automaticamente.
+4. Um operador humano possa assumir a conversa a qualquer momento.
+5. O operador humano possa devolver o controle para a IA quando desejar.
+6. Todo o histórico da conversa seja preservado.
+7. O operador consiga visualizar claramente quando a IA está conduzindo a negociação e quando um humano está conduzindo.
+8. A experiência do operador seja semelhante à experiência de utilização de aplicativos modernos de mensagens, especialmente o WhatsApp.
 
-## Fluxo principal:
+O objetivo **não é copiar o WhatsApp**, mas utilizar conceitos de UX já conhecidos pelos usuários para reduzir a curva de aprendizado do operador.
 
-Cliente
+---
 
-↓
+# Stack obrigatória
 
-Contrato
+Utilize as seguintes tecnologias:
 
-↓
+* Next.js
+* React
+* TypeScript
+* Tailwind CSS
+
+Considere uma arquitetura moderna compatível com Next.js atual.
 
-Título Financeiro
+Priorize:
 
-↓
+* Componentização
+* Reutilização
+* Separação de responsabilidades
+* Tipagem forte com TypeScript
+* Acessibilidade
+* Responsividade
+* Performance
+* Manutenibilidade
+* Escalabilidade
 
-Caso de Cobrança
+Não introduza bibliotecas adicionais sem justificar tecnicamente a necessidade.
 
-↓
+---
 
-IA
+# Objetivo principal
 
-↓
+Criar uma interface de **Central de Conversas de Cobrança**.
 
-Negociação
+A tela deve permitir que um operador consiga, de forma rápida:
 
-↓
+* visualizar conversas;
+* identificar devedores;
+* visualizar mensagens;
+* acompanhar negociações;
+* identificar se a IA está conduzindo a conversa;
+* assumir manualmente uma conversa;
+* devolver a conversa para a IA;
+* enviar mensagens;
+* visualizar status das mensagens;
+* consultar informações da dívida;
+* acompanhar o contexto da negociação.
 
-Pagamento
+A experiência deve ser inspirada em aplicações de mensagens modernas.
 
-↓
+---
 
-Encerrado
+# Estrutura da interface
 
+Projete a tela utilizando uma estrutura semelhante a:
 
-## Entidades
-# Tenant
+```text
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ Header / Busca / Filtros / Usuário                                           │
+├───────────────────┬──────────────────────────────────────┬───────────────────┤
+│                   │                                      │                   │
+│ Lista de          │         Conversação                  │ Contexto da       │
+│ conversas         │                                      │ cobrança          │
+│                   │                                      │                   │
+│ 🔵 João Silva     │  Header da conversa                  │ Devedor           │
+│    R$ 5.200       │                                      │                   │
+│    IA conduzindo  │  Mensagens                           │ Dívida            │
+│                   │                                      │                   │
+│ 🟡 Maria Souza    │                                      │ Contrato          │
+│    R$ 2.300       │                                      │                   │
+│    Humano         │                                      │ Negociação        │
+│                   │                                      │                   │
+│ 🔴 Carlos         │                                      │ Histórico         │
+│    R$ 8.900       │                                      │                   │
+│    Aguardando     │                                      │                   │
+│                   │                                      │                   │
+│                   │  Campo de mensagem                    │                   │
+│                   │  [Digite uma mensagem...] [Enviar]   │                   │
+└───────────────────┴──────────────────────────────────────┴───────────────────┘
+```
 
-### Representa uma empresa que contratou o SaaS.
+A interface deve ser responsiva.
 
-# Tenant
+Em telas menores, o painel lateral de informações pode ser recolhido.
 
-id
+---
 
-nome
+# 1. Lista de conversas
 
-cnpj
+Criar um componente reutilizável:
 
-plano
+```text
+ConversationList
+```
 
-status
+Cada conversa deve apresentar:
 
-configurações
+* Avatar
+* Nome do devedor
+* Última mensagem
+* Data/hora da última mensagem
+* Status da conversa
+* Valor da dívida
+* Indicador de mensagens não lidas
+* Indicador de quem está conduzindo:
 
+  * IA
+  * Humano
+  * Aguardando resposta
+  * Finalizada
+  * Em negociação
+  * Escalada
 
-# Usuário
+Exemplo:
 
-id
+```text
+João Silva
+"Consigo pagar R$ 800..."
+Hoje, 10:32
 
-tenant_id
+R$ 5.200,00
+🤖 IA conduzindo
+```
 
-nome
+Utilize estados visuais claros, mas evite excesso de cores.
 
-email
+---
 
-perfil
+# 2. Filtros das conversas
 
-status
+Criar filtros para:
 
+* Todas
+* Não lidas
+* IA conduzindo
+* Atendimento humano
+* Aguardando devedor
+* Aguardando operador
+* Em negociação
+* Finalizadas
+* Escaladas
 
-# Cliente
+Também permitir:
 
-- Pessoa que possui uma obrigação financeira.
+* pesquisa por nome;
+* CPF/CNPJ;
+* número do contrato;
+* número da cobrança;
+* conteúdo da mensagem.
 
-Cliente
+---
 
-id
+# 3. Área principal da conversa
 
-tenant_id
+Criar um componente:
 
-tipo
+```text
+ChatWindow
+```
 
-cpf_cnpj
+O cabeçalho da conversa deve apresentar:
 
-nome
+* Avatar
+* Nome do devedor
+* Status
+* Canal utilizado
+* Identificação do responsável atual
 
-emails
+Exemplo:
 
-telefones
+```text
+João Silva
+● Online
 
-endereços
+🤖 IA de Cobrança
+```
 
+Quando um humano assumir:
 
+```text
+João Silva
+● Online
 
-# Contrato
+👤 Atendimento: Edson
+```
 
-Origem da obrigação.
+---
 
-Contrato
+# 4. Mensagens
 
-id
+Criar componentes reutilizáveis:
 
-tenant_id
+```text
+MessageList
+MessageBubble
+MessageStatus
+MessageTimestamp
+SystemMessage
+```
 
-cliente_id
+As mensagens devem possuir diferenciação visual entre:
 
-número
+### Mensagem do devedor
 
-tipo
+```text
+Consigo pagar metade esse mês.
 
-data
+                         10:31
+```
 
-vigência
+### Mensagem enviada pela IA
 
-status
+```text
+Entendi, João. Podemos avaliar uma
+condição de pagamento para você.
 
-juros
+10:32
+🤖 IA
+```
 
-multa
+### Mensagem enviada por humano
 
-índice
+```text
+João, consegui uma condição especial
+para você.
 
-workflow_id
+10:35
+👤 Edson
+```
 
+### Mensagem de sistema
 
-# Cláusula
-Cláusula
+Exemplo:
 
-id
+```text
+────────────────────────────
+👤 Edson assumiu o atendimento
+às 10:35
+────────────────────────────
+```
 
-contrato_id
+Outro exemplo:
 
-tipo
+```text
+────────────────────────────
+🤖 IA retomou o atendimento
+às 11:02
+────────────────────────────
+```
 
-conteúdo
+Esses eventos devem fazer parte do histórico da conversa.
 
+---
 
-# Documento
-Documento
+# 5. Identificação clara da IA
 
-id
+A interface precisa deixar extremamente claro quando a mensagem foi enviada pela IA.
 
-contrato_id
+Utilize:
 
-arquivo
+```text
+🤖 IA de Cobrança
+```
 
-tipo
+ou um indicador equivalente.
 
+Não faça a IA parecer um operador humano.
 
-# Responsável
+O operador precisa conseguir identificar rapidamente:
 
-Permite vários responsáveis.
+* quem enviou;
+* quando enviou;
+* qual agente enviou;
+* se foi automático ou manual.
 
-Responsável
+---
 
-id
+# 6. Intervenção humana
 
-contrato_id
+Essa é uma das funcionalidades mais importantes.
 
-cliente_id
+Criar um mecanismo de:
 
-tipo
+```text
+Assumir conversa
+```
 
+Quando a IA estiver conduzindo:
 
-# Título Financeiro
+```text
+┌─────────────────────────────────────┐
+│ 🤖 IA está conduzindo esta conversa │
+│                                     │
+│ [ Assumir atendimento ]             │
+└─────────────────────────────────────┘
+```
 
-Essa entidade é muito importante.
+Ao clicar:
 
-Ela representa:
+```text
+Confirmar intervenção?
 
-parcela
-boleto
-aluguel
-mensalidade
+Ao assumir esta conversa, a IA será
+pausada e você passará a conduzir
+o atendimento.
 
-Título Financeiro
+[Cancelar] [Assumir conversa]
+```
 
-id
+Após assumir:
 
-contrato_id
+```text
+👤 Você está conduzindo esta conversa
 
-número
+[Devolver para IA]
+```
 
-vencimento
+---
 
-valor_original
+# 7. Devolver para IA
 
-valor_atual
+Quando o humano estiver conduzindo:
 
-status
+```text
+👤 Atendimento humano ativo
 
-dias_atraso
+[Devolver para IA]
+```
 
+Ao clicar:
 
-# Status:
+```text
+Deseja devolver esta conversa para a IA?
 
-ABERTO
+A IA poderá continuar a negociação a partir
+do contexto atual da conversa.
 
-PAGO
+[Cancelar] [Devolver para IA]
+```
 
-ATRASADO
+Registrar esse evento no histórico.
 
-NEGOCIADO
+---
 
-CANCELADO
+# 8. Estado da conversa
 
+Modele a interface considerando estados como:
 
-# Caso de Cobrança
+```typescript
+type ConversationStatus =
+  | 'AI_ACTIVE'
+  | 'HUMAN_ACTIVE'
+  | 'WAITING_DEBTOR'
+  | 'WAITING_OPERATOR'
+  | 'NEGOTIATING'
+  | 'ESCALATED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+```
 
-Esta é a principal entidade do sistema.
+Também considere separar:
 
-Caso de Cobrança
+```typescript
+type ConversationController =
+  | 'AI'
+  | 'HUMAN'
+```
 
-id
+Não misture esses dois conceitos.
 
-tenant_id
+Por exemplo:
 
-titulo_financeiro_id
+* `status = NEGOTIATING`
+* `controller = AI`
 
-status
+ou:
 
-prioridade
+* `status = NEGOTIATING`
+* `controller = HUMAN`
 
-workflow_id
+Isso deve ser refletido na arquitetura da aplicação.
 
-agente_ia_id
+---
 
-responsável_humano_id
+# 9. Compositor de mensagens
 
-score
+Criar um componente:
 
-data_abertura
+```text
+MessageComposer
+```
 
-data_encerramento
+Deve possuir:
 
+* textarea;
+* envio com Enter;
+* quebra de linha com Shift + Enter;
+* botão de enviar;
+* contador de caracteres, se necessário;
+* estado disabled;
+* loading durante envio;
+* tratamento de erro;
+* possibilidade de anexos, deixando a arquitetura preparada para expansão futura.
 
-# Status:
+Exemplo:
 
-CRIADO
+```text
+┌───────────────────────────────────────────────┐
+│ Digite uma mensagem...                       │
+│                                               │
+│                                   📎  [Enviar]│
+└───────────────────────────────────────────────┘
+```
 
-PREVENTIVO
+---
 
-AMIGÁVEL
+# 10. Contexto da cobrança
+
+Criar um painel lateral:
+
+```text
+DebtContextPanel
+```
+
+Esse painel deve mostrar informações importantes sem obrigar o operador a sair da conversa.
+
+Exemplo:
+
+```text
+DEVEDOR
+
+João Silva
+CPF: ***.***.***-**
+
+────────────────────
+
+DÍVIDA
+
+Valor original
+R$ 8.500,00
+
+Valor atualizado
+R$ 9.240,00
+
+Vencimento
+10/06/2026
+
+Dias em atraso
+70 dias
+
+────────────────────
+
+CONTRATO
+
+Contrato #12345
+
+────────────────────
 
 NEGOCIAÇÃO
 
-PROMESSA
+Status:
+Em negociação
 
-QUARENTENA
+Última proposta:
+R$ 7.800,00
 
-NEGATIVAÇÃO
+Parcelas:
+12x
 
-PROTESTO
+────────────────────
 
-JURÍDICO
+AÇÕES
 
-QUITADO
+[Ver contrato]
+[Ver cobrança]
+[Ver histórico]
+```
 
-ENCERRADO
+---
 
+# 11. Negociação
 
-# Conversa
+O chat deve estar preparado para suportar informações estruturadas de negociação.
 
-Cada caso possui uma conversa.
+Por exemplo:
 
+```typescript
+interface Negotiation {
+  id: string
+  conversationId: string
+  originalAmount: number
+  currentAmount: number
+  proposedAmount?: number
+  installments?: number
+  installmentAmount?: number
+  status: NegotiationStatus
+}
+```
+
+Possíveis estados:
+
+```typescript
+type NegotiationStatus =
+  | 'NONE'
+  | 'IN_PROGRESS'
+  | 'PROPOSAL_SENT'
+  | 'COUNTER_PROPOSAL'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'EXPIRED'
+```
+
+A interface deve permitir futuramente apresentar cards estruturados dentro da conversa.
+
+Exemplo:
+
+```text
+┌───────────────────────────────┐
+│ PROPOSTA DE NEGOCIAÇÃO        │
+│                               │
+│ Valor: R$ 7.800,00            │
+│ Parcelamento: 12x             │
+│ Parcela: R$ 650,00            │
+│                               │
+│ Status: Aguardando resposta   │
+└───────────────────────────────┘
+```
+
+---
+
+# 12. Timeline de eventos
+
+Além das mensagens, a arquitetura deve suportar eventos internos.
+
+Exemplos:
+
+```text
+IA iniciou atendimento
+
+Devedor respondeu
+
+IA enviou proposta
+
+Devedor recusou proposta
+
+Operador assumiu atendimento
+
+Operador enviou nova proposta
+
+Devedor aceitou negociação
+
+Negociação criada
+
+Cobrança finalizada
+```
+
+Criar um conceito semelhante a:
+
+```typescript
+type ConversationEvent =
+  | 'MESSAGE_SENT'
+  | 'MESSAGE_RECEIVED'
+  | 'AI_TAKEOVER'
+  | 'HUMAN_TAKEOVER'
+  | 'NEGOTIATION_CREATED'
+  | 'PROPOSAL_SENT'
+  | 'PROPOSAL_ACCEPTED'
+  | 'PROPOSAL_REJECTED'
+  | 'CONVERSATION_COMPLETED'
+```
+
+---
+
+# 13. Arquitetura de componentes
+
+Não crie um componente monolítico.
+
+Sugestão:
+
+```text
+components/
+└── conversations/
+    ├── ConversationPage.tsx
+    ├── ConversationList.tsx
+    ├── ConversationListItem.tsx
+    ├── ConversationFilters.tsx
+    ├── ChatWindow.tsx
+    ├── ChatHeader.tsx
+    ├── MessageList.tsx
+    ├── MessageBubble.tsx
+    ├── MessageComposer.tsx
+    ├── MessageStatus.tsx
+    ├── SystemMessage.tsx
+    ├── ConversationTakeover.tsx
+    ├── NegotiationCard.tsx
+    ├── DebtContextPanel.tsx
+    ├── DebtorSummary.tsx
+    └── ConversationTimeline.tsx
+```
+
+Avalie essa estrutura criticamente e altere-a caso exista uma arquitetura melhor.
+
+Evite criar componentes apenas para fragmentar código sem necessidade.
+
+---
+
+# 14. Modelo de dados
+
+Proponha interfaces TypeScript para:
+
+```typescript
+Conversation
+Message
+Debtor
+Debt
+Contract
+Negotiation
+ConversationEvent
+AIAgent
+Operator
+```
+
+Exemplo conceitual:
+
+```typescript
+interface Message {
+  id: string
+  conversationId: string
+  content: string
+  senderType: 'DEBTOR' | 'AI' | 'HUMAN' | 'SYSTEM'
+  senderId?: string
+  createdAt: string
+  status: MessageStatus
+}
+```
+
+Não limite a arquitetura ao exemplo acima.
+
+Analise o domínio e proponha uma modelagem adequada.
+
+---
+
+# 15. Preparação para tempo real
+
+A interface deve ser projetada considerando que as mensagens futuramente poderão chegar em tempo real.
+
+Não implemente necessariamente WebSocket se isso não for necessário nesta etapa.
+
+Porém, a arquitetura deve permitir posteriormente utilizar:
+
+* WebSocket;
+* SSE;
+* Supabase Realtime;
+* Pusher;
+* outro mecanismo de realtime.
+
+Evite criar componentes fortemente acoplados à forma como os dados chegam.
+
+---
+
+# 16. Integração com canais
+
+O sistema poderá futuramente trabalhar com múltiplos canais:
+
+```text
+WhatsApp
+Telegram
+SMS
+E-mail
+Chat interno
+```
+
+Portanto, modele a mensagem considerando:
+
+```typescript
+type Channel =
+  | 'WHATSAPP'
+  | 'TELEGRAM'
+  | 'SMS'
+  | 'EMAIL'
+  | 'INTERNAL'
+```
+
+A UI deve conseguir indicar o canal da conversa.
+
+---
+
+# 17. UX inspirada no WhatsApp
+
+Utilize conceitos de UX conhecidos:
+
+* lista de conversas;
+* mensagens agrupadas;
+* timestamp;
+* status de mensagem;
+* mensagens não lidas;
+* busca;
+* rolagem automática;
+* campo de composição;
+* cabeçalho fixo;
+* contexto do contato;
+* navegação rápida.
+
+Porém:
+
+**NÃO copie visualmente o WhatsApp.**
+
+Crie uma identidade própria para o sistema de cobrança.
+
+A interface deve parecer um produto SaaS profissional de cobrança, utilizando padrões de UX familiares ao operador.
+
+---
+
+# 18. Design System
+
+Utilize Tailwind CSS.
+
+Crie uma hierarquia visual consistente para:
+
+* cores;
+* espaçamentos;
+* tipografia;
+* bordas;
+* radius;
+* shadows;
+* estados;
+* badges;
+* botões;
+* inputs;
+* dropdowns;
+* dialogs.
+
+Priorize uma interface:
+
+* profissional;
+* limpa;
+* moderna;
+* com alta densidade de informação;
+* confortável para uso prolongado por operadores.
+
+Evite:
+
+* excesso de gradientes;
+* excesso de animações;
+* excesso de cores;
+* cards desnecessários;
+* sombras exageradas;
+* elementos decorativos que prejudiquem a produtividade.
+
+---
+
+# 19. Responsividade
+
+A interface precisa funcionar em:
+
+* Desktop
+* Notebook
+* Tablet
+
+No mobile, considere uma experiência diferente:
+
+```text
+Lista de conversas
+        ↓
 Conversa
+        ↓
+Informações da dívida
+```
 
-id
+Não tente manter três colunas obrigatoriamente em telas pequenas.
 
-caso_id
+---
 
-canal
+# 20. Acessibilidade
 
-status
+Utilize boas práticas:
 
+* HTML semântico;
+* ARIA quando necessário;
+* navegação por teclado;
+* foco visível;
+* labels;
+* contraste adequado;
+* estados de loading;
+* estados de erro;
+* mensagens acessíveis para leitores de tela.
 
-# Mensagem
-Mensagem
+---
 
-id
+# 21. Estados que devem ser tratados
 
-conversa_id
+Não implemente somente o estado "sucesso".
 
-autor
+A interface precisa possuir:
 
-tipo
+### Loading
 
-texto
+```text
+Carregando conversas...
+Carregando mensagens...
+Enviando mensagem...
+```
 
-tokens
+### Empty state
 
-data
+```text
+Nenhuma conversa encontrada.
+```
 
-# Autor:
+### Error state
 
-IA
+```text
+Não foi possível carregar as conversas.
 
-CLIENTE
+[Tentar novamente]
+```
 
-OPERADOR
+### Offline
 
-# Negociação
-Negociação
+```text
+Sem conexão.
 
-id
+Suas mensagens serão enviadas quando
+a conexão for restabelecida.
+```
 
-caso_id
+### IA processando
 
-status
+```text
+🤖 IA está analisando a conversa...
+```
 
-valor
+---
 
-desconto
+# 22. Segurança e permissões
 
-parcelas
+Considere que nem todo operador necessariamente possui permissão para:
 
-entrada
+* assumir conversas;
+* enviar mensagens;
+* alterar negociações;
+* devolver conversa para IA;
+* finalizar cobrança.
 
-# Promessa de Pagamento
-Promessa
+A UI deve estar preparada para controle de permissões.
 
-id
+Exemplo:
 
-caso_id
+```typescript
+interface ConversationPermissions {
+  canSendMessage: boolean
+  canTakeOver: boolean
+  canReturnToAI: boolean
+  canEditNegotiation: boolean
+  canCompleteConversation: boolean
+}
+```
 
-valor
+---
 
-vencimento
+# 23. Auditoria
 
-status
+Toda ação importante deve ser rastreável.
 
+Considere eventos como:
 
-# Quarentena
-Quarentena
+```text
+Quem assumiu a conversa?
+Quando assumiu?
+Quem devolveu para IA?
+Quando devolveu?
+Qual mensagem foi enviada?
+Foi IA ou humano?
+Qual operador alterou a negociação?
+```
 
-id
+A UI deve deixar a arquitetura preparada para apresentar essas informações.
 
-caso_id
+---
 
-início
+# 24. Performance
 
-fim
+Considere que um operador poderá possuir centenas ou milhares de conversas.
 
-motivo
+A arquitetura deve considerar:
 
-status
+* paginação;
+* virtualização da lista de mensagens quando necessário;
+* lazy loading;
+* debounce na busca;
+* memoização quando realmente necessária;
+* evitar renders desnecessários;
+* carregamento incremental do histórico.
 
+Não implemente otimizações prematuras sem necessidade.
 
-# Negativação
-Negativação
+---
 
-id
+# 25. Testes
 
-caso_id
+Crie uma estratégia de testes utilizando:
 
-provedor
+* Vitest
+* React Testing Library
 
-status
+Cubra principalmente:
 
-protocolo
+### ConversationList
 
-data
+* renderização;
+* seleção de conversa;
+* filtros;
+* busca;
+* mensagens não lidas.
 
+### ChatWindow
 
-# Protesto
-Protesto
+* renderização das mensagens;
+* diferenciação entre IA, humano e devedor;
+* mensagens do sistema;
+* estados de loading;
+* estados de erro.
 
-id
+### Takeover
 
-caso_id
+* assumir conversa;
+* confirmação;
+* cancelamento;
+* devolver para IA.
 
-cartório
+### MessageComposer
 
-status
+* envio;
+* Enter;
+* Shift + Enter;
+* loading;
+* disabled;
+* erro.
 
-protocolo
+### NegotiationCard
 
+* proposta;
+* aceite;
+* rejeição;
+* contraproposta.
 
-# Workflow
+---
 
-Cada empresa pode ter vários fluxos.
-Workflow
+# 26. Dados mockados
 
-id
+Como primeira etapa, não dependa de backend.
 
-tenant_id
+Crie mocks realistas para demonstrar:
 
-nome
+* várias conversas;
+* diferentes estados;
+* mensagens da IA;
+* mensagens do devedor;
+* mensagens humanas;
+* negociações;
+* eventos;
+* conversas finalizadas;
+* conversas aguardando resposta.
 
-ativo
+Os mocks devem representar um cenário realista de cobrança.
 
+---
 
-# Política de Cobrança
-Política
+# 27. Regras importantes
 
-id
+Não faça:
 
-tenant_id
+* componente gigante;
+* lógica de negócio misturada com apresentação;
+* valores hardcoded espalhados;
+* tipos TypeScript genéricos demais;
+* estados duplicados;
+* componentes acoplados ao backend;
+* lógica de IA dentro dos componentes visuais;
+* lógica de negociação dentro do MessageBubble.
 
-dias_negativação
+Separe claramente:
 
-dias_protesto
+```text
+UI
+↓
+Application Logic
+↓
+Domain
+↓
+Data/API
+```
 
-dias_quarentena
+---
 
-desconto_máximo
+# 28. Entregáveis
 
-parcelamento_máximo
+Quero que você execute o trabalho seguindo esta ordem:
 
+## Etapa 1 — Análise
 
-# Agente IA
-Agente
+Antes de escrever código:
 
-id
+1. Analise o problema.
+2. Identifique os principais casos de uso.
+3. Identifique os estados da conversa.
+4. Identifique os atores:
 
-tenant_id
+   * Devedor
+   * Agente IA
+   * Operador humano
+5. Proponha a arquitetura.
 
-nome
+## Etapa 2 — UX
 
-modelo
+Defina:
 
-objetivo
+* layout;
+* navegação;
+* estados;
+* hierarquia visual;
+* comportamento de takeover;
+* comportamento de devolução para IA;
+* experiência de negociação.
 
-ativo
+## Etapa 3 — Arquitetura
 
+Defina:
 
-# Auditoria
-Auditoria
+* estrutura de pastas;
+* componentes;
+* interfaces TypeScript;
+* hooks;
+* services;
+* mocks;
+* gerenciamento de estado.
 
-id
+## Etapa 4 — Implementação
 
-tenant_id
+Implemente a interface completa utilizando:
 
-entidade
+* Next.js
+* React
+* TypeScript
+* Tailwind CSS
 
-registro
+## Etapa 5 — Testes
 
-ação
+Implemente os testes dos principais componentes e fluxos.
 
-usuário
+## Etapa 6 — Code Review
 
-data
+Ao finalizar:
 
-antes
+1. Revise o código.
+2. Procure duplicações.
+3. Procure componentes excessivamente grandes.
+4. Procure problemas de tipagem.
+5. Procure problemas de acessibilidade.
+6. Procure problemas de UX.
+7. Procure possíveis problemas de performance.
+8. Sugira melhorias.
 
-depois
+---
 
+# Regra fundamental
 
-# Relacionamentos
+Não quero apenas uma tela bonita.
 
+Quero uma **arquitetura de produto real**, preparada para evoluir para uma central de atendimento omnichannel onde:
+
+```text
+                    ┌───────────────┐
+                    │    Sistema    │
+                    │   de cobrança │
+                    └───────┬───────┘
+                            │
+                     ┌──────▼──────┐
+                     │ Conversação │
+                     └──────┬──────┘
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+         ┌────▼────┐   ┌────▼────┐   ┌────▼────┐
+         │ Devedor │   │    IA   │   │ Humano  │
+         └─────────┘   └─────────┘   └─────────┘
+                            │             │
+                            └──────┬──────┘
+                                   │
+                             Negociação
+                                   │
+                            ┌──────▼──────┐
+                            │   Acordo    │
+                            └─────────────┘
+```
+
+O principal objetivo é criar uma experiência na qual o operador consiga **assumir o controle da conversa sem perder o contexto**, enquanto a IA consegue **retomar a negociação exatamente de onde o humano parou**.
+
+Antes de implementar, apresente sua proposta de arquitetura e UX. Depois implemente a solução completa.
+
+
+# Requisito adicional — Multi-Tenant, Operadores e Transferência de Conversas
+
+O sistema é **multi-tenant**.
+
+Cada Tenant representa uma organização/empresa independente e pode possuir:
+
+* vários operadores;
+* diferentes perfis de acesso;
+* diferentes permissões;
+* diferentes agentes de IA;
+* diferentes configurações de cobrança;
+* diferentes canais de comunicação.
+
+Um operador **NUNCA pode acessar ou manipular conversas pertencentes a outro tenant**.
+
+Toda entidade relacionada à conversação deve respeitar o isolamento do tenant.
+
+---
+
+# 1. Hierarquia de acesso
+
+Considere a seguinte estrutura:
+
+```text
 Tenant
 │
-├── Usuários
+├── Operadores
+│   ├── Administrador
+│   ├── Supervisor
+│   ├── Operador
+│   └── Outros perfis
 │
-├── Clientes
-│      │
-│      └────────────┐
-│                   │
-├── Contratos       │
-│      │            │
-│      ▼            │
-│ Cláusulas         │
-│ Documentos        │
-│ Responsáveis──────┘
+├── Agentes de IA
 │
+├── Devedores
 │
-└── Títulos Financeiros
+├── Contratos
+│
+├── Cobranças
+│
+└── Conversas
+```
+
+Uma conversa pertence a exatamente um Tenant.
+
+```typescript
+interface Conversation {
+  id: string
+  tenantId: string
+
+  debtorId: string
+
+  currentController: 'AI' | 'HUMAN'
+
+  currentOperatorId?: string
+
+  status: ConversationStatus
+
+  channel: Channel
+
+  createdAt: string
+  updatedAt: string
+}
+```
+
+---
+
+# 2. Responsável atual pela conversa
+
+Não trate `currentOperatorId` como histórico.
+
+Ele representa apenas o **responsável humano atual**.
+
+Exemplo:
+
+```text
+conversation.currentOperatorId
         │
         ▼
-Casos de Cobrança
-        │
-        ├── Conversas
-        │       │
-        │       └── Mensagens
-        │
-        ├── Negociações
-        │
-        ├── Promessas
-        │
-        ├── Quarentenas
-        │
-        ├── Negativações
-        │
-        ├── Protestos
-        │
-        ├── Eventos
-        │
-        └── Auditoria
+      Edson
+```
 
+Se Edson transferir a conversa para Maria:
 
-# O que eu mudaria em relação a um sistema de cobrança tradicional
-- A maioria dos sistemas coloca Contrato ou Cliente no centro do domínio. Eu colocaria o Caso de Cobrança como o Aggregate Root da recuperação de crédito.
+```text
+conversation.currentOperatorId
+        │
+        ▼
+      Maria
+```
 
-# Isso significa que:
-- A IA trabalha sobre o caso.
-- O operador assume o caso.
-- O workflow controla o caso.
-- A negociação pertence ao caso.
-- A quarentena pertence ao caso.
-- A negativação pertence ao caso.
-- O protesto pertence ao caso.
-- A auditoria registra tudo o que acontece no caso.
+Porém, o sistema deve preservar todo o histórico da transferência.
 
+---
 
-## Enquanto isso, Cliente, Contrato e Título Financeiro permanecem como a origem da obrigação financeira.
+# 3. Histórico de atribuições
 
-## Essa separação deixa o domínio mais coeso, facilita a manutenção e permite evoluir o produto para suportar diferentes tipos de dívida sem alterar a lógica central de recuperação de crédito.
+Crie uma entidade específica:
+
+```typescript
+interface ConversationAssignment {
+  id: string
+
+  tenantId: string
+
+  conversationId: string
+
+  assignedToOperatorId?: string
+
+  assignedByOperatorId: string
+
+  previousOperatorId?: string
+
+  reason?: string
+
+  createdAt: string
+}
+```
+
+Isso permitirá responder perguntas como:
+
+```text
+Quem estava responsável anteriormente?
+
+Quem transferiu a conversa?
+
+Para quem foi transferida?
+
+Quando ocorreu a transferência?
+
+Qual era o motivo?
+
+Quantas vezes essa conversa foi transferida?
+```
+
+---
+
+# 4. Transferência de conversa
+
+Um operador deve poder transferir uma conversa para outro operador do mesmo tenant.
+
+Adicionar uma ação:
+
+```text
+[Transferir conversa]
+```
+
+Ao clicar, abrir um modal:
+
+```text
+┌───────────────────────────────────────┐
+│ Transferir conversa                   │
+├───────────────────────────────────────┤
+│                                       │
+│ Responsável atual                     │
+│ 👤 Edson Bastos                       │
+│                                       │
+│ Transferir para                       │
+│                                       │
+│ [ 🔍 Buscar operador...           ▼ ] │
+│                                       │
+│ Motivo da transferência               │
+│                                       │
+│ [ Opcional                         ]  │
+│                                       │
+│                                       │
+│ [Cancelar]       [Transferir]         │
+└───────────────────────────────────────┘
+```
+
+---
+
+# 5. Lista de operadores disponíveis
+
+Ao abrir o seletor, apresentar somente operadores que:
+
+1. pertencem ao mesmo tenant;
+2. estão ativos;
+3. possuem permissão para receber conversas;
+4. possuem acesso ao tipo de cobrança/conversa;
+5. não estejam bloqueados por alguma regra de negócio.
+
+Exemplo:
+
+```text
+Buscar operador...
+
+👤 Maria Souza
+   Supervisora
+   ● Disponível
+
+👤 João Santos
+   Operador
+   ● Disponível
+
+👤 Carlos Oliveira
+   Operador
+   ◐ Ocupado
+```
+
+Não permitir selecionar operadores de outro tenant.
+
+---
+
+# 6. Permissões
+
+A transferência deve ser controlada por permissão.
+
+Considere permissões como:
+
+```typescript
+interface ConversationPermissions {
+  canViewConversation: boolean
+
+  canSendMessage: boolean
+
+  canTakeOverConversation: boolean
+
+  canTransferConversation: boolean
+
+  canTransferToAnyOperator: boolean
+
+  canTransferToSupervisors: boolean
+
+  canReturnConversationToAI: boolean
+
+  canCompleteConversation: boolean
+}
+```
+
+Por exemplo:
+
+### Operador
+
+Pode:
+
+```text
+Visualizar conversa
+Enviar mensagens
+Assumir conversa
+Transferir conversa
+```
+
+Mas não necessariamente pode:
+
+```text
+Transferir para qualquer operador
+Finalizar cobrança
+Alterar determinadas condições da negociação
+```
+
+### Supervisor
+
+Pode:
+
+```text
+Visualizar conversas da equipe
+Assumir conversas
+Transferir conversas
+Transferir para qualquer operador
+Acompanhar histórico
+```
+
+### Administrador
+
+Possui acesso completo dentro do tenant.
+
+Não presuma que esses perfis precisam existir exatamente dessa forma. Analise a arquitetura de autorização e proponha a melhor solução.
+
+---
+
+# 7. Conversa atribuída ao operador
+
+Na lista de conversas, apresentar claramente quem é o responsável.
+
+Exemplo:
+
+```text
+┌──────────────────────────────────────────┐
+│ João Silva                               │
+│ "Consigo pagar em duas parcelas..."      │
+│                                          │
+│ R$ 8.500,00                              │
+│ 👤 Maria Souza                           │
+│ ● Em negociação                          │
+└──────────────────────────────────────────┘
+```
+
+Quando a conversa estiver sendo conduzida pela IA:
+
+```text
+┌──────────────────────────────────────────┐
+│ João Silva                               │
+│ "Consigo pagar em duas parcelas..."      │
+│                                          │
+│ R$ 8.500,00                              │
+│ 🤖 IA de Cobrança                        │
+│ ● Aguardando resposta                    │
+└──────────────────────────────────────────┘
+```
+
+---
+
+# 8. Transferência deve gerar evento de sistema
+
+Toda transferência deve gerar um evento no histórico.
+
+Exemplo:
+
+```text
+──────────────────────────────────────────
+
+👤 Edson transferiu o atendimento
+
+De:
+Edson Bastos
+
+Para:
+Maria Souza
+
+Motivo:
+"Cliente solicitou negociação especial"
+
+Hoje, 10:42
+
+──────────────────────────────────────────
+```
+
+Esse evento não deve ser tratado como uma mensagem comum.
+
+Ele deve possuir um tipo específico:
+
+```typescript
+type ConversationEventType =
+  | 'MESSAGE_SENT'
+  | 'MESSAGE_RECEIVED'
+  | 'AI_TAKEOVER'
+  | 'HUMAN_TAKEOVER'
+  | 'TRANSFERRED'
+  | 'NEGOTIATION_CREATED'
+  | 'PROPOSAL_SENT'
+  | 'PROPOSAL_ACCEPTED'
+  | 'PROPOSAL_REJECTED'
+  | 'CONVERSATION_COMPLETED'
+```
+
+---
+
+# 9. Transferência e IA
+
+É importante diferenciar:
+
+### Conversa controlada pela IA
+
+```text
+controller = AI
+currentOperatorId = null
+```
+
+### Conversa controlada por humano
+
+```text
+controller = HUMAN
+currentOperatorId = "operator-123"
+```
+
+### Transferência entre humanos
+
+Edson:
+
+```text
+controller = HUMAN
+currentOperatorId = edsonId
+```
+
+Após transferência:
+
+```text
+controller = HUMAN
+currentOperatorId = mariaId
+```
+
+A IA permanece pausada.
+
+Não iniciar a IA automaticamente apenas porque houve uma transferência.
+
+---
+
+# 10. Transferência para outro operador
+
+Quando Edson transferir para Maria:
+
+```text
+Antes:
+
+IA
+ ↓
+Edson
+ ↓
+Conversa
+```
+
+Depois:
+
+```text
+IA pausada
+ ↓
+Maria
+ ↓
+Conversa
+```
+
+A conversa deve permanecer no mesmo contexto.
+
+Não criar uma nova conversa.
+
+Não duplicar mensagens.
+
+Não criar uma nova negociação.
+
+Não perder o histórico.
+
+---
+
+# 11. Transferência e notificações
+
+Ao transferir uma conversa, o operador destinatário deve receber uma indicação de nova atribuição.
+
+Exemplo:
+
+```text
+🔔 Nova conversa atribuída
+
+João Silva foi atribuído a você.
+
+Última mensagem:
+"Consigo pagar em duas parcelas."
+
+[Ver conversa]
+```
+
+A arquitetura deve permitir posteriormente implementar:
+
+* notificações in-app;
+* push;
+* e-mail;
+* WhatsApp interno;
+* outros mecanismos.
+
+Não acople a implementação da UI a um mecanismo específico de notificação.
+
+---
+
+# 12. Filtragem por operador
+
+A lista de conversas deve permitir filtros como:
+
+```text
+Minhas conversas
+Conversas da equipe
+Não atribuídas
+Com IA
+Em negociação
+Aguardando devedor
+Aguardando operador
+Finalizadas
+```
+
+Para supervisores/administradores:
+
+```text
+Responsável:
+
+[Todos]
+[Edson]
+[Maria]
+[João]
+[Não atribuídas]
+[IA]
+```
+
+Um operador sem permissão para visualizar conversas da equipe deve visualizar apenas as conversas às quais possui acesso.
+
+---
+
+# 13. Conversas não atribuídas
+
+Deve existir suporte para conversas sem operador humano.
+
+Exemplo:
+
+```typescript
+{
+  controller: 'HUMAN',
+  currentOperatorId: null
+}
+```
+
+Isso representa:
+
+```text
+Aguardando atribuição
+```
+
+A UI deve permitir que operadores autorizados assumam essa conversa.
+
+Exemplo:
+
+```text
+┌─────────────────────────────────────┐
+│ Conversa sem responsável            │
+│                                     │
+│ [Assumir conversa]                  │
+└─────────────────────────────────────┘
+```
+
+---
+
+# 14. Regras de negócio da transferência
+
+Antes de executar a transferência, valide:
+
+```text
+1. O operador atual possui permissão?
+2. A conversa pertence ao mesmo tenant?
+3. O operador destinatário pertence ao mesmo tenant?
+4. O operador destinatário está ativo?
+5. O operador destinatário possui permissão para essa conversa?
+6. A conversa está em um estado que permite transferência?
+7. Existe alguma regra de negócio impedindo a transferência?
+```
+
+A validação deve existir no backend.
+
+A UI deve apenas refletir as permissões.
+
+**Nunca confiar somente na autorização do frontend.**
+
+---
+
+# 15. Concorrência
+
+Considere o seguinte cenário:
+
+```text
+Edson ───────┐
+             ├── tenta transferir → Maria
+João ────────┘
+```
+
+Ou:
+
+```text
+Edson está atendendo
+
+Maria abre a mesma conversa
+
+Edson transfere para João
+```
+
+A arquitetura deve evitar inconsistências de atribuição.
+
+Considere mecanismos como:
+
+* optimistic concurrency;
+* versionamento da conversa;
+* controle transacional;
+* validação do responsável atual;
+* idempotência da operação.
+
+Exemplo conceitual:
+
+```typescript
+transferConversation({
+  conversationId,
+  fromOperatorId,
+  toOperatorId,
+  expectedVersion
+})
+```
+
+Se a versão mudou:
+
+```text
+A conversa foi alterada por outro operador.
+Atualize a conversa antes de tentar novamente.
+```
+
+---
+
+# 16. Auditoria
+
+A transferência deve ser auditável.
+
+Registrar:
+
+```typescript
+interface ConversationTransferAudit {
+  id: string
+  tenantId: string
+  conversationId: string
+
+  fromOperatorId?: string
+  toOperatorId: string
+
+  performedByOperatorId: string
+
+  reason?: string
+
+  createdAt: string
+}
+```
+
+Nunca confiar apenas no histórico visual da conversa para auditoria.
+
+A auditoria deve possuir persistência própria.
+
+---
+
+# 17. Modelo conceitual final
+
+A arquitetura deve considerar:
+
+```text
+Tenant
+ │
+ ├── Operators
+ │      │
+ │      └── Permissions
+ │
+ ├── AI Agents
+ │
+ ├── Debtors
+ │
+ ├── Contracts
+ │
+ ├── Debts
+ │
+ └── Conversations
+          │
+          ├── Messages
+          │
+          ├── Events
+          │
+          ├── Negotiations
+          │
+          ├── Assignments
+          │
+          └── Audit
+```
+
+A relação de responsabilidade deve ser:
+
+```text
+Conversation
+      │
+      ├── controller = AI
+      │       └── AI Agent
+      │
+      └── controller = HUMAN
+              └── Current Operator
+```
+
+E o histórico:
+
+```text
+Conversation
+      │
+      └── Assignments
+            ├── IA
+            ├── Edson
+            ├── Maria
+            ├── João
+            └── ...
+```
+
+---
+
+# 18. Requisito fundamental de multi-tenancy
+
+Considere esta regra como **não negociável**:
+
+> Nenhum operador, agente de IA ou usuário pode visualizar, consultar, transferir ou manipular uma conversa que pertença a outro tenant, independentemente do ID recebido pelo frontend.
+
+A autorização deve ser validada no backend/API e, caso seja utilizado banco com suporte a Row Level Security, considerar também políticas de isolamento por `tenant_id`.
+
+O frontend nunca deve ser responsável pela segurança do isolamento entre tenants.
+
+---
+
+# 19. UX final esperada
+
+O operador deve conseguir realizar o fluxo:
+
+```text
+1. Recebe/abre uma conversa
+          ↓
+2. Visualiza o contexto da dívida
+          ↓
+3. Verifica que a IA está conduzindo
+          ↓
+4. Decide assumir a conversa
+          ↓
+5. IA é pausada
+          ↓
+6. Operador negocia com o devedor
+          ↓
+7. Decide transferir para outro operador
+          ↓
+8. Seleciona o operador
+          ↓
+9. Informa o motivo
+          ↓
+10. Confirma transferência
+          ↓
+11. Novo operador recebe a conversa
+          ↓
+12. Todo o histórico permanece disponível
+          ↓
+13. Novo operador continua a negociação
+```
+
+O sistema deve fazer com que essa transferência pareça **natural e instantânea**, semelhante à transferência de atendimento em uma central de atendimento profissional.
+
+---
+
+# 20. Critério de aceite
+
+Considere a funcionalidade pronta somente quando:
+
+* [ ] O sistema respeita isolamento por tenant.
+* [ ] Um tenant pode possuir múltiplos operadores.
+* [ ] Operadores possuem permissões diferentes.
+* [ ] A UI respeita as permissões.
+* [ ] O backend deve ser considerado a autoridade final de autorização.
+* [ ] Uma conversa possui um responsável atual.
+* [ ] É possível assumir uma conversa.
+* [ ] É possível transferir uma conversa.
+* [ ] É possível transferir para outro operador do mesmo tenant.
+* [ ] Operadores sem permissão não conseguem realizar transferência.
+* [ ] Operadores de outro tenant nunca aparecem como opção.
+* [ ] A transferência mantém todo o histórico.
+* [ ] A negociação permanece intacta.
+* [ ] A IA permanece pausada durante atendimento humano.
+* [ ] A transferência gera evento de sistema.
+* [ ] Existe histórico de atribuições.
+* [ ] Existe auditoria da transferência.
+* [ ] O operador destinatário pode ser notificado.
+* [ ] Conversas não atribuídas podem ser assumidas por operadores autorizados.
+* [ ] Existem estados de loading, erro e sucesso.
+* [ ] O fluxo possui testes automatizados.
+* [ ] O código está componentizado.
+* [ ] A solução está preparada para realtime.
+* [ ] A solução está preparada para múltiplos canais.

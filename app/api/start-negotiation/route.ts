@@ -7,6 +7,8 @@ import { sendCaseMessage } from '@/lib/channels/message-service';
 import { requireTenantContext, serverError } from '@/lib/api-auth';
 import { recordAuditAction } from '@/lib/audit';
 import { getActiveQuarantine } from '@/lib/quarantine';
+import { isAIPaused } from '@/lib/conversation-service';
+import { stripThinkBlocks } from '@/lib/agent';
 
 const OPENCODE_BASE_URL = 'https://opencode.ai/zen/go/v1';
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1';
@@ -74,6 +76,14 @@ export async function POST(req: NextRequest) {
     if (quarantine) {
       return NextResponse.json({
         error: `Caso em quarentena (${quarantine.status}): negociação bloqueada. Motivo: ${quarantine.reason || 'não informado'}.`,
+      }, { status: 409 });
+    }
+
+    // Guard de condutor explícito (Central de Conversas): um humano já pode ter
+    // assumido este caso via takeover antes do primeiro contato da IA.
+    if (isAIPaused({ controller: caseData.controller, status: caseData.status })) {
+      return NextResponse.json({
+        error: 'A IA está pausada nesta conversa (um humano está conduzindo). Devolva a conversa para a IA antes de iniciar a negociação automatizada.',
       }, { status: 409 });
     }
 
@@ -185,10 +195,10 @@ export async function POST(req: NextRequest) {
       metadata: { source: 'start-negotiation', content_length: aiText.length },
     });
 
-    // Texto limpo (sem marcadores [HANDOFF]/[ACORDO_FECHADO]) tanto para o
-    // canal quanto para a persistência — mesmo tratamento do pipeline em
-    // lib/agent.ts.
-    const cleanAiText = aiText
+    // Texto limpo (sem blocos <think> de raciocínio nem marcadores
+    // [HANDOFF]/[ACORDO_FECHADO]) tanto para o canal quanto para a
+    // persistência — mesmo tratamento do pipeline em lib/agent.ts.
+    const cleanAiText = stripThinkBlocks(aiText)
       .replace(/\[HANDOFF\]/g, '')
       .replace(/\[ACORDO_FECHADO\]/g, '')
       .trim();

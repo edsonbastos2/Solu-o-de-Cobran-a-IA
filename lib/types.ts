@@ -124,6 +124,10 @@ export interface Case {
   active_channel?: 'whatsapp' | 'telegram' | null;
   propensity_score?: number | null;
   propensity_updated_at?: string | null;
+  /** Condutor atual da conversa (Central de Conversas). NULL em caso legado. */
+  controller?: ConversationController | null;
+  /** Versão da conversa para concorrência otimista (takeover/transferência). */
+  conversation_version?: number;
 }
 
 export interface Message {
@@ -465,4 +469,112 @@ export interface CaseInsights {
   theme_summary: string;
   agreement_probability: number;
   recommended_tone: string;
+}
+
+// ---------------------------------------------------------------------------
+// Central de Conversas (Ticket 1807 — TechSpec "Interfaces Principais")
+// ---------------------------------------------------------------------------
+
+/** Condutor atual da conversa: IA ou humano (ADR-002). */
+export type ConversationController = 'ai' | 'human';
+
+/** Eventos tipados persistidos em `conversation_events` (histórico da conversa). */
+export type ConversationEventType =
+  | 'MESSAGE_RECEIVED'
+  | 'HUMAN_TAKEOVER'
+  | 'RETURNED_TO_AI'
+  | 'TRANSFERRED'
+  | 'NEGOTIATION_CREATED'
+  | 'PROPOSAL_ACCEPTED'
+  | 'PROPOSAL_REJECTED'
+  | 'CONVERSATION_COMPLETED';
+
+export interface ConversationEvent {
+  id: string;
+  tenant_id: string;
+  case_id: string;
+  type: ConversationEventType;
+  /** profiles.id de quem realizou a ação (null em eventos automáticos). */
+  performed_by?: string | null;
+  /** Contexto do evento — ex. { fromOperatorId, toOperatorId, reason }. */
+  payload?: Record<string, unknown>;
+  created_at: string;
+}
+
+/** Filtros da lista de conversas (`GET /api/conversations?filter=`). */
+export type ConversationFilter =
+  | 'all'
+  | 'unread'
+  | 'ai'
+  | 'human'
+  | 'waiting_debtor'
+  | 'waiting_operator'
+  | 'negotiating'
+  | 'closed'
+  | 'mine';
+
+export interface ConversationListItem {
+  case: Case;
+  lastMessage: Pick<Message, 'role' | 'content' | 'created_at' | 'send_status'> | null;
+  controller: ConversationController;
+  currentOperator: { id: string; name: string } | null;
+  channel: 'whatsapp' | 'telegram' | null;
+  unreadCount: number;
+  /** Derivado sem reescrever a máquina de estados (ver TechSpec). */
+  waitingFor: 'debtor' | 'operator' | null;
+  /** Tipo do evento mais recente em `conversation_events` — usado para o destaque "Nova atribuição" (último evento TRANSFERRED). */
+  lastEventType?: ConversationEventType | null;
+}
+
+export interface ConversationListParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  filter?: ConversationFilter;
+  assignee?: string;
+  tenant_id?: string;
+}
+
+export interface ConversationsListResponse {
+  conversations: ConversationListItem[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export type ConversationActionResult =
+  | { ok: true; conversation: ConversationDetailResponse }
+  | {
+      ok: false;
+      error_code: 'NOT_FOUND' | 'FORBIDDEN' | 'VERSION_CONFLICT' | 'INVALID_STATE' | 'INVALID_OPERATOR' | 'INTERNAL_ERROR';
+    };
+
+export interface ConversationPermissions {
+  /** Todos os membros do tenant. */
+  canView: boolean;
+  /** Humano conduz + (atribuído a mim || role >= gestor). */
+  canSend: boolean;
+  /** Qualquer membro ativo. */
+  canTakeOver: boolean;
+  canReturnToAI: boolean;
+  /** role >= gestor. */
+  canTransfer: boolean;
+  /** role >= admin. */
+  canComplete: boolean;
+}
+
+export interface ConversationDetailResponse {
+  case: Case;
+  client: Client | null;
+  contract: ContractWithClient | null;
+  financial_title: FinancialTitle | null;
+  negotiation: Negotiation | null;
+  messages: Message[];
+  events: ConversationEvent[];
+  conversationVersion: number;
+  unreadCount: number;
+  permissions: ConversationPermissions;
+  currentOperator: { id: string; name: string } | null;
+  operators: { id: string; name: string; role: string }[];
+  stage: import('@/lib/finance').CollectionStageInfo;
 }

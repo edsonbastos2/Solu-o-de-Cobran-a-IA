@@ -103,7 +103,7 @@ export function Header() {
   };
 
   return (
-    <header className="relative border-b border-white/5 bg-[#111318]">
+    <header className="relative shrink-0 border-b border-white/5 bg-[#111318]">
       <div className="h-14 px-4 sm:px-6 flex items-center justify-between">
         <div className="flex items-center gap-2 sm:gap-3">
           <SidebarTrigger data-tour="mobile-menu-trigger" />

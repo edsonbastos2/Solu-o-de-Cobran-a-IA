@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState, useRef, useMemo, memo } from 'react';
+import { use, useEffect, useState, useMemo, memo } from 'react';
 import Link from 'next/link';
 import useSWR from 'swr';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip } from 'recharts';
@@ -11,16 +11,13 @@ import { useActiveTenant } from '@/hooks/use-active-tenant';
 import { useNegotiationActions } from '@/hooks/use-negotiation-actions';
 import {
   ArrowLeft,
-  Bot,
   User as UserIcon,
-  Send,
   Radio,
   CheckCircle,
   AlertCircle,
   Clock,
   FileText,
   MessageSquare,
-  ShieldAlert,
   Play,
   RefreshCw,
   Download,
@@ -40,6 +37,7 @@ import { AuditLog, Case, CaseDetailsResponse, CaseInsights, Client, ContractWith
 import { formatPhoneInput, formatCurrency } from '@/lib/utils';
 import { generateCaseDossier, CollectionStageInfo } from '@/lib/finance';
 import { NegotiationStatusBadge } from '@/components/negotiations/negotiation-status-badge';
+import { ConversationSummaryCard } from '@/components/cases/conversation-summary-card';
 
 function ObligationContextCard({
   caseData,
@@ -509,7 +507,7 @@ const caseData: Case | null = data?.case || null;
 
   // Negativação ativa vinculada ao título financeiro do caso (alerta no topo).
   const negativationUrl = canFetch && financialTitle?.id
-    ? `/api/negativations?limit=1&financial_title_id=${financialTitle.id}${tenantPath}`
+    ? `/api/negativations?limit=1&financial_title_id=${financialTitle.id}${tenantId ? `&tenant_id=${encodeURIComponent(tenantId)}` : ''}`
     : null;
   const { data: negativationData, mutate: mutateNegativation } = useSWR<{
     negativations: Array<{ id: string; status: string; completed_at?: string | null; notified_at?: string | null; provider?: string | null }>;
@@ -520,7 +518,7 @@ const caseData: Case | null = data?.case || null;
 
   // Protesto ativo vinculado ao título financeiro do caso (alerta no topo).
   const protestUrl = canFetch && financialTitle?.id
-    ? `/api/protests?limit=1&financial_title_id=${financialTitle.id}${tenantPath}`
+    ? `/api/protests?limit=1&financial_title_id=${financialTitle.id}${tenantId ? `&tenant_id=${encodeURIComponent(tenantId)}` : ''}`
     : null;
   const { data: protestData } = useSWR<{
     protests: Array<{ id: string; status: string; completed_at?: string | null; notified_at?: string | null; provider?: string | null }>;
@@ -530,7 +528,7 @@ const caseData: Case | null = data?.case || null;
   ) || null;
 
   // Processo jurídico vinculado ao caso (seção jurídica no detalhe).
-  const legalUrl = canFetch && caseId ? `/api/legal-processes?limit=1&case_id=${caseId}${tenantPath}` : null;
+  const legalUrl = canFetch && caseId ? `/api/legal-processes?limit=1&case_id=${caseId}${tenantId ? `&tenant_id=${encodeURIComponent(tenantId)}` : ''}` : null;
   const { data: legalData } = useSWR<{
     legal_processes: Array<{
       id: string;
@@ -546,38 +544,18 @@ const caseData: Case | null = data?.case || null;
   }>(legalUrl, fetcher);
   const legalProcess = legalData?.legal_processes?.[0] || null;
 
-  // Human intervention input
-  const [humanMessage, setHumanMessage] = useState('');
-  const [isSending, setIsSending] = useState(false);
   const [isStartingIA, setIsStartingIA] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isUpdatingChannel, setIsUpdatingChannel] = useState(false);
 
-  const chatBottomRef = useRef<HTMLDivElement>(null);
-
-  // Real-time Supabase channels for live chat and status updates
+  // Real-time Supabase channel para status/dados do caso. O chat inline foi
+  // removido (Central de Conversas, task 11) — a subscription de `messages`
+  // agora vive apenas em `hooks/use-conversations.ts` (useConversation), sem
+  // duplicação aqui.
   useEffect(() => {
     const client = supabase;
     if (!client || !caseId || !canFetch) return;
 
-    // Listen to message inserts for this case
-    const messagesChannel = client
-      .channel(`realtime-messages-${caseId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-          filter: `case_id=eq.${caseId}`
-        },
-        () => {
-          mutate();
-        }
-      )
-      .subscribe();
-
-    // Listen to case status/data changes
     const caseChannel = client
       .channel(`realtime-case-${caseId}`)
       .on(
@@ -595,15 +573,9 @@ const caseData: Case | null = data?.case || null;
       .subscribe();
 
     return () => {
-      client.removeChannel(messagesChannel);
       client.removeChannel(caseChannel);
     };
   }, [caseId, canFetch, mutate]);
-
-  // Auto-scroll chat to bottom
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   if (needsTenantSelection) {
     return (
@@ -621,38 +593,6 @@ const caseData: Case | null = data?.case || null;
       </div>
     );
   }
-
-  const handleSendHumanMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!humanMessage.trim() || isSending) return;
-
-    setIsSending(true);
-    const msgText = humanMessage.trim();
-    setHumanMessage('');
-
-    try {
-      const res = await fetchWithAuth('/api/agent-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          caseId,
-          message: msgText,
-          tenant_id: tenantId || undefined
-        })
-      });
-
-      const resData = await res.json();
-      if (!res.ok) {
-        alert('Erro ao enviar mensagem: ' + (resData.error || 'Erro desconhecido'));
-      } else {
-        mutate();
-      }
-    } catch (err: unknown) {
-      alert('Erro na conexão: ' + (err instanceof Error ? err.message : 'erro desconhecido'));
-    } finally {
-      setIsSending(false);
-    }
-  };
 
   const handleStartNegotiation = async () => {
     setIsStartingIA(true);
@@ -1014,202 +954,20 @@ const caseData: Case | null = data?.case || null;
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Chat Panel */}
-          <div className="lg:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[680px]">
-            {/* Chat Sub-Header */}
-            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 bg-emerald-500 rounded-full animate-ping" />
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 block">
-                    Conversa - Sincronizado ao vivo
-                  </span>
-                  <span className="text-xs text-emerald-400 font-medium" data-testid="active-channel-label">
-                    Canal ativo: {activeChannelLabel}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {canManageCase && clientChannels.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">Canal Ativo:</span>
-                    <label htmlFor="case-active-channel" className="sr-only">Canal ativo do caso</label>
-                    <select
-                      id="case-active-channel"
-                      value={caseData.active_channel ?? ''}
-                      disabled={isUpdatingChannel}
-                      onChange={(e) =>
-                        handleUpdateActiveChannel(
-                          (e.target.value || null) as 'whatsapp' | 'telegram' | null
-                        )
-                      }
-                      data-testid="active-channel-select"
-                      className="bg-slate-800 border border-slate-700 text-white text-xs font-semibold rounded-lg px-2 py-1 focus:ring-1 focus:ring-emerald-500 disabled:opacity-50"
-                    >
-                      <option value="">Automático (telefone do caso)</option>
-                      {clientChannels.map((c) => (
-                        <option key={c.id} value={c.channel}>
-                          {c.channel === 'telegram'
-                            ? `Telegram${c.username ? ` (@${c.username})` : ''}`
-                            : 'WhatsApp'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <span className="text-[11px] text-slate-400">Status do Caso:</span>
-                <label htmlFor="case-status" className="sr-only">Status do caso</label>
-                <select
-                  id="case-status"
-                  value={caseData.status}
-                  disabled={isUpdatingStatus}
-                  onChange={(e) => handleUpdateStatus(e.target.value)}
-                  className="bg-slate-800 border border-slate-700 text-white text-xs font-semibold rounded-lg px-2 py-1 focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="not_started">Não Iniciado</option>
-                  <option value="in_negotiation">Em Negociação</option>
-                  <option value="needs_attention">Requer Atenção</option>
-                  <option value="closed">Acordo Fechado</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Messages Feed */}
-            <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-slate-100/60">
-              {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
-                  <MessageSquare className="w-12 h-12 text-slate-300 mb-2" />
-                  <p className="font-semibold text-slate-600">Nenhuma mensagem registrada ainda</p>
-                  <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                    Inicie a abordagem automatizada via IA ou envie uma mensagem direta de intervenção humana abaixo.
-                  </p>
-                  {caseData.status === 'not_started' && (
-                    <button
-                      onClick={handleStartNegotiation}
-                      disabled={isStartingIA}
-                      className="mt-4 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-2"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-white" />
-                      Iniciar Negociação por IA
-                    </button>
-                  )}
-                </div>
-              ) : (
-                messages.map((m) => {
-                  const isUser = m.role === 'user';
-                  const isAI = m.role === 'ai';
-                  const isHuman = m.role === 'human';
-                  const isSystem = m.role === 'system';
-
-                  if (isSystem) {
-                    return (
-                      <div key={m.id} className="flex justify-center my-2">
-                        <span className="bg-slate-200 text-slate-600 text-[11px] font-medium px-3 py-1 rounded-full border border-slate-300/60">
-                          {m.content}
-                        </span>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div
-                      key={m.id}
-                      className={`flex flex-col ${isUser ? 'items-start' : 'items-end'}`}
-                    >
-                      <div className="flex items-center gap-1.5 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
-                        {isUser && (
-                          <>
-                            <UserIcon className="w-3 h-3 text-slate-500" />
-                            <span>{caseData.name} (Devedor)</span>
-                          </>
-                        )}
-                        {isAI && (
-                          <>
-                            <Bot className="w-3 h-3 text-emerald-600" />
-                            <span className="text-emerald-700 font-bold">Agente Cobrança IA</span>
-                          </>
-                        )}
-                        {isHuman && (
-                          <>
-                            <ShieldAlert className="w-3 h-3 text-blue-600" />
-                            <span className="text-blue-700 font-bold">Atendente Humano</span>
-                          </>
-                        )}
-                        {m.channel && (
-                          <span
-                            data-testid={`message-channel-${m.channel}`}
-                            className={`rounded px-1.5 py-0.5 normal-case tracking-normal ${
-                              m.channel === 'telegram'
-                                ? 'bg-sky-100 text-sky-700'
-                                : 'bg-emerald-100 text-emerald-700'
-                            }`}
-                          >
-                            {m.channel === 'telegram' ? 'Telegram' : 'WhatsApp'}
-                          </span>
-                        )}
-                        <span>•</span>
-                        <span>{new Date(m.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-
-                      <div
-                        className={`max-w-[82%] px-4 py-3 rounded-2xl text-sm shadow-sm leading-relaxed ${
-                          isUser
-                            ? 'bg-white text-slate-800 rounded-tl-none border border-slate-200'
-                            : isAI
-                            ? 'bg-emerald-600 text-white rounded-tr-none shadow-emerald-600/10'
-                            : 'bg-blue-600 text-white rounded-tr-none shadow-blue-600/10'
-                        }`}
-                      >
-                        <p className="whitespace-pre-wrap">{m.content}</p>
-                      </div>
-
-                      {m.send_status === 'failed' && (
-                        <div
-                          role="alert"
-                          data-testid="message-send-failed"
-                          className="mt-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold text-red-600"
-                        >
-                          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          <span>Falha no envio{m.status_error ? `: ${m.status_error}` : ''}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-              <div ref={chatBottomRef} />
-            </div>
-
-            {/* Human Intervention Input Bar */}
-            <form onSubmit={handleSendHumanMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
-              <label htmlFor="human-message" className="sr-only">Mensagem de intervenção humana</label>
-              <input
-                id="human-message"
-                type="text"
-                placeholder="Enviar mensagem via WhatsApp (Intervenção Humana)..."
-                value={humanMessage}
-                onChange={(e) => setHumanMessage(e.target.value)}
-                className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white"
-              />
-              <button
-                type="submit"
-                disabled={isSending || !humanMessage.trim()}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2 shrink-0"
-              >
-                {isSending ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-                Enviar (Humano)
-              </button>
-            </form>
-          </div>
-
-          {/* Sidebar Info & Controls */}
-          <div className="space-y-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <ConversationSummaryCard
+            caseId={caseId}
+            tenantId={tenantId}
+            status={caseData.status}
+            isUpdatingStatus={isUpdatingStatus}
+            onUpdateStatus={handleUpdateStatus}
+            canManageCase={canManageCase}
+            clientChannels={clientChannels}
+            activeChannel={caseData.active_channel}
+            activeChannelLabel={activeChannelLabel}
+            isUpdatingChannel={isUpdatingChannel}
+            onUpdateActiveChannel={handleUpdateActiveChannel}
+          />
 <ObligationContextCard caseData={caseData} client={client} contract={contract} financialTitle={financialTitle} />
             <FinancialSummaryCard caseData={caseData} stage={stage} formattedOriginal={formattedOriginal} formattedUpdated={formattedUpdated} />
             {legalProcess && <LegalProcessCard legalProcess={legalProcess} tenantPath={tenantPath} />}
@@ -1289,8 +1047,7 @@ const caseData: Case | null = data?.case || null;
             )}
 
 <AuditActivityCard auditLogs={auditLogs} />
-            <InsightsPanel caseId={caseId} tenantPath={tenantPath} canFetch={canFetch} />
-          </div>
+          <InsightsPanel caseId={caseId} tenantPath={tenantPath} canFetch={canFetch} />
         </div>
 
         <div className="mt-6">
