@@ -9,6 +9,7 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 import { fetcher, fetchWithAuth } from '@/lib/api';
 import type { NotificationsResponse } from '@/lib/types';
 import Link from 'next/link';
+import { HelpChat } from '@/components/help-chat';
 
 export function Header() {
   const router = useRouter();
@@ -112,6 +113,9 @@ export function Header() {
         <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
           <span className="text-slate-500 hidden lg:inline">{userName}</span>
           <div className="w-px h-5 sm:h-6 bg-white/10 hidden sm:block"></div>
+
+          {/* Assistente do sistema */}
+          <HelpChat />
 
           {/* Notificações */}
           <div ref={bellRef} className="relative">
