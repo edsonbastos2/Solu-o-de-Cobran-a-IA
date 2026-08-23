@@ -7,18 +7,21 @@ import { Loader2, Upload, File, X } from 'lucide-react';
 import { formatPhoneInput } from '@/lib/utils';
 import { fetchWithAuth } from '@/lib/api';
 import { useActiveTenant } from '@/hooks/use-active-tenant';
+import { ManualContractForm } from '@/components/contracts/manual-contract-form';
 
 export default function NewContractPage() {
   const router = useRouter();
   const { authLoading, isConfigured, tenantId, tenantQuery, tenantPath, needsTenantSelection } = useActiveTenant();
+  const [mode, setMode] = useState<'ai' | 'manual'>('ai');
   const [contractText, setContractText] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedData, setExtractedData] = useState<ContractExtractionResult | null>(null);
+  const [manualClientId, setManualClientId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  
+
   const [policies, setPolicies] = useState<{id: string, name: string}[]>([]);
   const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
 
@@ -64,6 +67,7 @@ export default function NewContractPage() {
         throw new Error(`Resposta inválida do servidor (${res.status}): ${responseText.slice(0, 200)}`);
       }
       if (!res.ok) throw new Error(data.error || data.message || 'Extraction failed');
+      setManualClientId(null);
       setExtractedData(data);
     } catch (err: any) {
       console.error(err);
@@ -92,6 +96,7 @@ export default function NewContractPage() {
         body: JSON.stringify({
           tenant_id: tenantId || undefined,
           collection_policy_id: selectedPolicyId || null,
+          client_id: manualClientId || undefined,
           client_name: extractedData.client_name,
           client_document: extractedData.client_document,
           client_address: extractedData.client_address,
@@ -130,13 +135,43 @@ export default function NewContractPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-semibold text-gray-900 mb-8">Novo Contrato por IA</h1>
-        
+        <h1 className="text-3xl font-semibold text-gray-900 mb-2">Novo Contrato</h1>
+
+        <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 mb-6">
+          <button
+            type="button"
+            onClick={() => { setMode('ai'); setManualClientId(null); setExtractedData(null); }}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'ai' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            Via IA
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('manual'); setExtractedData(null); }}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'manual' ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            Manual
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Input Section */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col">
+            {mode === 'manual' ? (
+              <>
+                <h2 className="text-xl font-medium text-gray-800 mb-4">Dados do cliente e contrato</h2>
+                <ManualContractForm
+                  tenantQuery={tenantQuery}
+                  onUseData={(data, clientId) => {
+                    setManualClientId(clientId);
+                    setExtractedData(data);
+                  }}
+                />
+              </>
+            ) : (
+            <>
             <h2 className="text-xl font-medium text-gray-800 mb-4">Envie o contrato</h2>
-            
+
             {/* File Upload Area */}
             <div className="mb-4">
               <label htmlFor="contract-file" className="block text-sm font-medium text-gray-700 mb-2">Arquivo PDF (Opcional)</label>
@@ -199,12 +234,14 @@ export default function NewContractPage() {
                 'Extrair com Inteligência Artificial'
               )}
             </button>
+            </>
+            )}
           </div>
 
           {/* Results Section */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col">
-            <h2 className="text-xl font-medium text-gray-800 mb-4">Informações Extraídas</h2>
-            
+            <h2 className="text-xl font-medium text-gray-800 mb-4">{mode === 'manual' ? 'Revisão' : 'Informações Extraídas'}</h2>
+
             {extractedData ? (
               <div className="flex-1 overflow-y-auto">
                 <div className="space-y-6">
@@ -268,7 +305,11 @@ export default function NewContractPage() {
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-                <p className="text-center">As informações extraídas aparecerão aqui após a análise da inteligência artificial.</p>
+                <p className="text-center">
+                  {mode === 'manual'
+                    ? 'Preencha os dados ao lado e clique em "Usar estes dados" para revisar e salvar.'
+                    : 'As informações extraídas aparecerão aqui após a análise da inteligência artificial.'}
+                </p>
               </div>
             )}
           </div>

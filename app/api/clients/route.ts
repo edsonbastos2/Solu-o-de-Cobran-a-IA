@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
+    const search = (searchParams.get('search') || '').slice(0, 100).trim();
 
     if (!getSupabaseServer(req)) {
       return NextResponse.json({ clients: [], count: 0, totalPages: 1 });
@@ -21,10 +22,15 @@ export async function GET(req: NextRequest) {
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    const query = supabase
+    let query = supabase
       .from('clients')
       .select('*, client_channels (id, channel, username, verified_at)', { count: 'exact' })
       .eq('tenant_id', tenantId);
+
+    if (search) {
+      const term = `%${search}%`;
+      query = query.or(`name.ilike.${term},document.ilike.${term}`);
+    }
 
     const { data, error, count } = await query
       .order('name', { ascending: true })

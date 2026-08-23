@@ -150,7 +150,7 @@ const handleSaveEdit = async (id: string) => {
                     <td colSpan={5} className="px-6 py-12 text-center text-gray-500 flex flex-col items-center whitespace-normal">
                       <Users className="w-12 h-12 text-gray-300 mb-3" />
                       <p>Nenhum cliente encontrado.</p>
-                      <p className="text-sm mt-1">Os clientes são criados automaticamente ao importar um contrato via IA.</p>
+                      <p className="text-sm mt-1">Clientes também são criados automaticamente ao cadastrar um contrato.</p>
                     </td>
                   </tr>
                 ) : (

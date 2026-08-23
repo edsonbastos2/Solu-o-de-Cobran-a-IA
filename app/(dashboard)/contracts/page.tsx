@@ -36,7 +36,7 @@ export default function ContractsPage() {
             className="inline-flex items-center justify-center px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium text-sm"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Novo Contrato (via IA)
+            Novo Contrato
           </Link>
         </div>
 
@@ -90,7 +90,7 @@ export default function ContractsPage() {
                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500 flex flex-col items-center whitespace-normal">
                       <FileText className="w-12 h-12 text-gray-300 mb-3" />
                       <p>Nenhum contrato encontrado.</p>
-                        <Link href={`/contracts/new${tenantPath}`} className="text-emerald-600 hover:underline mt-1">Importe um agora com IA</Link>
+                        <Link href={`/contracts/new${tenantPath}`} className="text-emerald-600 hover:underline mt-1">Cadastre um agora</Link>
                     </td>
                   </tr>
                 ) : (

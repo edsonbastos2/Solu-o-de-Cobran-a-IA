@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireTenantContext, requireRole, serverError, TenantContext } from '@/lib/api-auth';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 type ContractCreateBody = {
   tenant_id?: string | null;
   collection_policy_id?: string | null;
+  client_id?: string | null;
   client_name?: string | null;
   client_document?: string | null;
   client_address?: string | null;
@@ -113,34 +116,51 @@ export async function POST(req: NextRequest) {
     }
 
     let clientId: string;
-    const { data: existingClients, error: existingClientError } = await database
-      .from('clients')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .eq('document', document)
-      .limit(1);
-
-    if (existingClientError) throw existingClientError;
-    if (existingClients?.[0]?.id) {
-      clientId = existingClients[0].id;
-    } else {
-      const { data: newClient, error: clientError } = await database
+    if (body.client_id) {
+      if (!UUID_PATTERN.test(body.client_id)) {
+        return NextResponse.json({ error: 'client_id inválido.' }, { status: 400 });
+      }
+      const { data: selectedClient, error: selectedClientError } = await database
         .from('clients')
-        .insert({
-          tenant_id: tenantId,
-          user_id: userId,
-          name: body.client_name?.trim() || 'Desconhecido',
-          document,
-          address: body.client_address || null,
-          phone: body.client_phone || null,
-          email: body.client_email || null,
-        })
         .select('id')
-        .single();
+        .eq('id', body.client_id)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      if (selectedClientError) throw selectedClientError;
+      if (!selectedClient) {
+        return NextResponse.json({ error: 'Cliente não encontrado para o tenant ativo.' }, { status: 404 });
+      }
+      clientId = selectedClient.id;
+    } else {
+      const { data: existingClients, error: existingClientError } = await database
+        .from('clients')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('document', document)
+        .limit(1);
 
-      if (clientError) throw clientError;
-      clientId = newClient.id;
-      createdClientId = clientId;
+      if (existingClientError) throw existingClientError;
+      if (existingClients?.[0]?.id) {
+        clientId = existingClients[0].id;
+      } else {
+        const { data: newClient, error: clientError } = await database
+          .from('clients')
+          .insert({
+            tenant_id: tenantId,
+            user_id: userId,
+            name: body.client_name?.trim() || 'Desconhecido',
+            document,
+            address: body.client_address || null,
+            phone: body.client_phone || null,
+            email: body.client_email || null,
+          })
+          .select('id')
+          .single();
+
+        if (clientError) throw clientError;
+        clientId = newClient.id;
+        createdClientId = clientId;
+      }
     }
 
     const { data: newContract, error: contractError } = await database
