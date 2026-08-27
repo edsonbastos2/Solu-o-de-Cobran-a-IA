@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, serverError } from '@/lib/api-auth';
+import { requireTenantContext, serverError } from '@/lib/api-auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { transferConversation } from '@/lib/conversation-service';
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cas
     return NextResponse.json({ error: 'expectedVersion é obrigatório.' }, { status: 400 });
   }
 
-  const tenant = await requireRole(req, 'gestor', body?.tenant_id);
+  const tenant = await requireTenantContext(req, body?.tenant_id);
   if ('response' in tenant) return tenant.response;
 
   if (!(await rateLimit(`conversations:transfer:${tenant.ctx.userId}`, 20, 60_000))) {

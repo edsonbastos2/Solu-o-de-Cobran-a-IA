@@ -75,7 +75,7 @@ export function deriveConversationPermissions(
     canSend,
     canTakeOver: true,
     canReturnToAI: canSend,
-    canTransfer: rank >= ROLE_RANK.gestor,
+    canTransfer: rank >= ROLE_RANK.gestor || opts.isAssignedToMe,
     canComplete: rank >= ROLE_RANK.admin,
   };
 }
@@ -627,15 +627,15 @@ export async function transferConversation(
   caseId: string,
   input: { toOperatorId: string; reason?: string; expectedVersion: number }
 ): Promise<ConversationActionResult> {
-  const permissions = deriveConversationPermissions(role, {
-    isAssignedToMe: true,
-    controller: 'human',
-  });
-  if (!permissions.canTransfer) return { ok: false, error_code: 'FORBIDDEN' };
-
   const snapshot = await loadCaseForAction(db, tenantId, caseId);
   if (snapshot && 'internal' in snapshot) return { ok: false, error_code: 'INTERNAL_ERROR' };
   if (!snapshot) return { ok: false, error_code: 'NOT_FOUND' };
+
+  const permissions = deriveConversationPermissions(role, {
+    isAssignedToMe: snapshot.assigned_user_id === userId,
+    controller: resolveController(snapshot),
+  });
+  if (!permissions.canTransfer) return { ok: false, error_code: 'FORBIDDEN' };
 
   const { data: member, error: memberError } = await db
     .from('tenant_members')

@@ -125,17 +125,18 @@ describe('resolveController', () => {
 });
 
 describe('deriveConversationPermissions', () => {
-  it('operador atribuído pode enviar e devolver, mas não transferir', () => {
+  it('operador atribuído pode enviar, devolver e transferir', () => {
     const p = deriveConversationPermissions('operador', { isAssignedToMe: true, controller: 'human' });
     expect(p.canSend).toBe(true);
     expect(p.canReturnToAI).toBe(true);
-    expect(p.canTransfer).toBe(false);
+    expect(p.canTransfer).toBe(true);
     expect(p.canComplete).toBe(false);
   });
 
-  it('operador não atribuído não pode enviar', () => {
+  it('operador não atribuído não pode enviar nem transferir', () => {
     const p = deriveConversationPermissions('operador', { isAssignedToMe: false, controller: 'human' });
     expect(p.canSend).toBe(false);
+    expect(p.canTransfer).toBe(false);
   });
 
   it('gestor transfere mas não completa', () => {
@@ -257,14 +258,71 @@ describe('returnConversationToAI', () => {
 });
 
 describe('transferConversation', () => {
-  it('bloqueia operador sem permissão de transferência', async () => {
-    const db = createDbMock({});
+  it('bloqueia operador não titular do caso', async () => {
+    const db = createDbMock({
+      cases: [{ data: { ...baseCase, controller: 'human', assigned_user_id: 'user-2' } }],
+    });
     const result = await transferConversation(db as never, TENANT, OPERATOR, 'operador', CASE_ID, {
-      toOperatorId: 'user-2',
+      toOperatorId: 'user-3',
       expectedVersion: 2,
     });
     expect(result).toEqual({ ok: false, error_code: 'FORBIDDEN' });
-    expect(db.calls.length).toBe(0);
+    expect(db.calls.some((c) => c.table === 'cases' && c.method === 'update')).toBe(false);
+  });
+
+  it('operador titular transfere com sucesso gravando evento TRANSFERRED e auditoria', async () => {
+    const detail = { ...baseCase, controller: 'human', assigned_user_id: 'user-2', conversation_version: 3, financial_titles: null };
+    const db = createDbMock({
+      cases: [
+        { data: { ...baseCase, controller: 'human', assigned_user_id: OPERATOR } },
+        { data: { ...baseCase, controller: 'human', assigned_user_id: 'user-2', conversation_version: 3 } },
+        { data: detail },
+      ],
+      profiles: [{ data: [{ id: 'user-2', name: 'Maria Souza' }] }],
+      audit_logs: [{ data: null }],
+      ...detailQueue({
+        conversation_events: [{ data: null }, { data: [] }],
+        tenant_members: [
+          { data: { user_id: 'user-2', role: 'operador', status: 'active' } },
+          { data: [{ user_id: 'user-2', role: 'operador' }] },
+          { data: [{ user_id: 'user-2', role: 'operador' }] },
+        ],
+      }),
+    });
+
+    const result = await transferConversation(db as never, TENANT, OPERATOR, 'operador', CASE_ID, {
+      toOperatorId: 'user-2',
+      reason: 'Realocação de carteira',
+      expectedVersion: 2,
+    });
+
+    expect(result.ok).toBe(true);
+    const updateCall = db.calls.find((c) => c.table === 'cases' && c.method === 'update');
+    expect(updateCall?.args[0]).toMatchObject({ controller: 'human', assigned_user_id: 'user-2' });
+    const eventInsert = db.calls.find((c) => c.table === 'conversation_events' && c.method === 'insert');
+    expect(eventInsert?.args[0]).toMatchObject({
+      type: 'TRANSFERRED',
+      performed_by: OPERATOR,
+      payload: {
+        fromOperatorId: OPERATOR,
+        toOperatorId: 'user-2',
+        reason: 'Realocação de carteira',
+      },
+    });
+    const auditInsert = db.calls.find((c) => c.table === 'audit_logs' && c.method === 'insert');
+    expect(auditInsert?.args[0]).toMatchObject({ action: 'CONVERSATION_TRANSFERRED', tenant_id: TENANT });
+  });
+
+  it('retorna VERSION_CONFLICT quando a versão não corresponde', async () => {
+    const db = createDbMock({
+      cases: [{ data: { ...baseCase, controller: 'human', assigned_user_id: OPERATOR } }, { data: null }],
+      tenant_members: [{ data: { user_id: 'user-2', role: 'operador', status: 'active' } }],
+    });
+    const result = await transferConversation(db as never, TENANT, OPERATOR, 'gestor', CASE_ID, {
+      toOperatorId: 'user-2',
+      expectedVersion: 99,
+    });
+    expect(result).toEqual({ ok: false, error_code: 'VERSION_CONFLICT' });
   });
 
   it('retorna INVALID_OPERATOR quando o destinatário não é membro ativo do tenant', async () => {

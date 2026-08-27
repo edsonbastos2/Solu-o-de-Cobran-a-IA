@@ -23,7 +23,7 @@ import { POST as takeOver } from './takeover/route';
 import { POST as returnToAI } from './return-to-ai/route';
 import { POST as transfer } from './transfer/route';
 import { POST as read } from './read/route';
-import { requireTenantContext, requireRole } from '@/lib/api-auth';
+import { requireTenantContext } from '@/lib/api-auth';
 import { takeOverConversation, transferConversation } from '@/lib/conversation-service';
 
 function fakeReq(body: unknown) {
@@ -81,7 +81,7 @@ describe('POST /api/conversations/[caseId]/return-to-ai', () => {
 describe('POST /api/conversations/[caseId]/transfer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireRole).mockResolvedValue({ ctx: { ...CTX, role: 'gestor' } } as never);
+    vi.mocked(requireTenantContext).mockResolvedValue({ ctx: { ...CTX, role: 'gestor' } } as never);
   });
 
   it('retorna 400 sem toOperatorId', async () => {
@@ -100,13 +100,22 @@ describe('POST /api/conversations/[caseId]/transfer', () => {
     expect(res.status).toBe(422);
   });
 
-  it('retorna 403 quando requireRole nega operador', async () => {
-    vi.mocked(requireRole).mockResolvedValue({
-      response: NextResponse.json({ error: 'Permissão insuficiente.' }, { status: 403 }),
-    } as never);
+  it('retorna 403 quando o operador não é titular do caso', async () => {
+    vi.mocked(transferConversation).mockResolvedValue({ ok: false, error_code: 'FORBIDDEN' });
     const res = await transfer(fakeReq({ toOperatorId: 'user-2', expectedVersion: 2 }), PARAMS('case-1'));
     expect(res.status).toBe(403);
-    expect(transferConversation).not.toHaveBeenCalled();
+  });
+
+  it('retorna 200 quando o operador titular transfere', async () => {
+    vi.mocked(requireTenantContext).mockResolvedValue({ ctx: CTX } as never);
+    vi.mocked(transferConversation).mockResolvedValue({ ok: true, conversation: { case: { id: 'case-1' } } as never });
+    const res = await transfer(fakeReq({ toOperatorId: 'user-2', expectedVersion: 2 }), PARAMS('case-1'));
+    expect(res.status).toBe(200);
+    expect(transferConversation).toHaveBeenCalledWith(CTX.supabase, 'tenant-1', 'user-1', 'operador', 'case-1', {
+      toOperatorId: 'user-2',
+      reason: undefined,
+      expectedVersion: 2,
+    });
   });
 });
 

@@ -128,6 +128,10 @@ export interface Case {
   controller?: ConversationController | null;
   /** Versão da conversa para concorrência otimista (takeover/transferência). */
   conversation_version?: number;
+  /** Etapa do funil CRM (Ticket 1808) — sincronizada com status via lib/crm/stages. */
+  crm_stage?: CrmStage | null;
+  /** Prioridade operacional no board do CRM: alta | media | baixa. */
+  priority?: CrmPriority | null;
 }
 
 export interface Message {
@@ -323,6 +327,7 @@ export interface CaseDetailsResponse {
   financial_title: FinancialTitle | null;
   messages: Message[];
   audit_logs: AuditLog[];
+  stage_history: CaseStageHistoryEntry[];
   legacy_context: boolean;
   stage: import('@/lib/finance').CollectionStageInfo;
 }
@@ -577,4 +582,57 @@ export interface ConversationDetailResponse {
   currentOperator: { id: string; name: string } | null;
   operators: { id: string; name: string; role: string }[];
   stage: import('@/lib/finance').CollectionStageInfo;
+}
+
+// ---------------------------------------------------------------------------
+// CRM de Cobrança (Ticket 1808 — TechSpec "Interfaces Principais")
+// ---------------------------------------------------------------------------
+
+/** Etapa do funil CRM (ADR-002 — domínio em código em lib/crm/stages). */
+export type CrmStage = import('@/lib/crm/stages').CrmStage;
+
+/** Prioridade operacional do caso no board do CRM: alta | media | baixa. */
+export type CrmPriority = import('@/lib/crm/stages').CrmPriority;
+
+export interface CrmBoardCase {
+  id: string;
+  caseNumber: string;
+  clientName: string;
+  clientDocumentMasked: string;
+  currentValue: number;
+  dueDate: string;
+  lastContactAt: string | null;
+  controller: 'ai' | 'human' | null;
+  priority: CrmPriority;
+  assignee: { id: string; name: string } | null;
+}
+
+export interface CrmBoardColumn {
+  stage: CrmStage;
+  total: number;
+  page: number;
+  totalPages: number;
+  cases: CrmBoardCase[];
+}
+
+export interface CrmStats {
+  totalCases: number;
+  negotiating: number;
+  awaitingPayment: number;
+  negotiationsCreated: number;
+  negotiationsAccepted: number;
+  promises: number;
+  paymentsConfirmed: number;
+  recoveredValue: number;
+}
+
+export interface CaseStageHistoryEntry {
+  id: string;
+  case_id: string;
+  from_stage: CrmStage | null;
+  to_stage: CrmStage;
+  changed_by: string | null;
+  changed_by_name?: string | null;
+  reason: string | null;
+  created_at: string;
 }

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireTenantContext, requireRole, serverError } from '@/lib/api-auth';
+import { requireTenantContext, requireRole, ROLE_RANK, serverError } from '@/lib/api-auth';
 import { calculateUpdatedValue, getCollectionStage } from '@/lib/finance';
 import { recordAuditAction } from '@/lib/audit';
 import { resolveCaseClientId } from '@/lib/channels/message-service';
-import { CaseWithRelations } from '@/lib/types';
+import { CRM_PRIORITIES } from '@/lib/crm/stages';
+import { CaseStageHistoryEntry, CaseWithRelations } from '@/lib/types';
 
 const ALLOWED_STATUSES = ['not_started', 'in_negotiation', 'needs_attention', 'closed'] as const;
 const STATUS_TRANSITIONS: Record<string, Set<string>> = {
@@ -64,6 +65,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .order('created_at', { ascending: false });
     if (auditError) return serverError('case audit query error', auditError);
 
+    const { data: stageHistory, error: stageHistoryError } = await ctx.supabase
+      .from('case_stage_history')
+      .select('id, case_id, from_stage, to_stage, changed_by, reason, created_at, profiles (name)')
+      .eq('case_id', id)
+      .eq('tenant_id', ctx.tenantId)
+      .order('created_at', { ascending: false });
+    if (stageHistoryError) return serverError('case stage history query error', stageHistoryError);
+
+    const stageHistoryEntries = ((stageHistory ?? []) as (CaseStageHistoryEntry & {
+      profiles?: { name: string } | { name: string }[] | null;
+    })[]).map((entry) => ({
+      id: entry.id,
+      case_id: entry.case_id,
+      from_stage: entry.from_stage ?? null,
+      to_stage: entry.to_stage,
+      changed_by: entry.changed_by ?? null,
+      changed_by_name: Array.isArray(entry.profiles)
+        ? entry.profiles[0]?.name ?? null
+        : entry.profiles?.name ?? null,
+      reason: entry.reason ?? null,
+      created_at: entry.created_at,
+    }));
+
     const relatedCase = caseData as CaseWithRelations;
     const title = Array.isArray(relatedCase.financial_titles)
       ? relatedCase.financial_titles[0]
@@ -87,6 +111,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       financial_title: title || null,
       messages: messages || [],
       audit_logs: auditLogs || [],
+      stage_history: stageHistoryEntries,
       legacy_context: currentCase.legacy_context,
       stage: getCollectionStage(currentCase.due_date, currentCase.max_discount_margin, currentCase.status),
     });
@@ -98,17 +123,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { searchParams } = new URL(req.url);
-  const tenant = await requireRole(req, 'gestor', searchParams.get('tenant_id'));
+  const rawBody = await req.json().catch(() => null);
+  const isPriorityOnly =
+    Boolean(rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody)) &&
+    Object.keys(rawBody).length === 1 &&
+    'priority' in rawBody;
+
+  const tenant = isPriorityOnly
+    ? await requireTenantContext(req, searchParams.get('tenant_id'))
+    : await requireRole(req, 'gestor', searchParams.get('tenant_id'));
   if ('response' in tenant) return tenant.response;
 
   try {
     const { ctx } = tenant;
-    const body = await req.json().catch(() => null);
+    const body = rawBody;
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return NextResponse.json({ error: 'Corpo inválido.' }, { status: 400 });
     }
 
-    const allowed = ['status', 'assigned_user_id', 'active_channel'];
+    const allowed = ['status', 'assigned_user_id', 'active_channel', 'priority'];
     const fields = Object.keys(body);
     if (fields.some((field) => !allowed.includes(field))) {
       return NextResponse.json({ error: 'Campo não permitido para atualização do caso.' }, { status: 400 });
@@ -123,6 +156,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .maybeSingle();
     if (beforeError) return serverError('case PATCH lookup error', beforeError);
     if (!before) return NextResponse.json({ error: 'Caso não encontrado ou acesso negado.' }, { status: 404 });
+
+    if (
+      isPriorityOnly &&
+      ROLE_RANK[ctx.role] < ROLE_RANK.gestor &&
+      !ctx.isSuperAdmin &&
+      before.assigned_user_id !== ctx.userId
+    ) {
+      return NextResponse.json({ error: 'Permissão insuficiente para realizar esta ação.' }, { status: 403 });
+    }
 
     const update: Record<string, unknown> = {};
     if ('status' in body) {
@@ -188,6 +230,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       update.active_channel = activeChannel;
     }
+    if ('priority' in body) {
+      if (
+        typeof body.priority !== 'string' ||
+        !(CRM_PRIORITIES as readonly string[]).includes(body.priority)
+      ) {
+        return NextResponse.json({ error: 'Prioridade inválida. Use alta, media ou baixa.' }, { status: 400 });
+      }
+      update.priority = body.priority;
+    }
 
     const { data: updatedCase, error } = await ctx.supabase
       .from('cases')
@@ -200,11 +251,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const channelChanged =
       'active_channel' in body && before.active_channel !== updatedCase.active_channel;
+    const priorityChanged = 'priority' in body && before.priority !== updatedCase.priority;
     const action = channelChanged
       ? 'CASE_CHANNEL_CHANGED'
-      : 'status' in body && before.status !== updatedCase.status
-        ? (updatedCase.status === 'closed' ? 'CASE_CLOSED' : 'STATUS_CHANGE')
-        : 'CASE_ASSIGNMENT_CHANGE';
+      : priorityChanged
+        ? 'CASE_PRIORITY_CHANGED'
+        : 'status' in body && before.status !== updatedCase.status
+          ? (updatedCase.status === 'closed' ? 'CASE_CLOSED' : 'STATUS_CHANGE')
+          : 'CASE_ASSIGNMENT_CHANGE';
     await recordAuditAction(ctx.supabase, {
       tenantId: ctx.tenantId,
       entityType: 'case',
@@ -221,6 +275,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ? {
               active_channel_old: before.active_channel ?? null,
               active_channel_new: updatedCase.active_channel ?? null,
+            }
+          : {}),
+        ...(priorityChanged
+          ? {
+              priority_old: before.priority ?? null,
+              priority_new: updatedCase.priority ?? null,
             }
           : {}),
       },
